@@ -25,4 +25,6 @@ return [
     'role_id_squad_id_map_desc'          => 'JSON object mapping. SeAT squad IDs to SeAT role IDs',
     'inactive_role_id'                   => 'Inactive Role ID',
     'inactive_role_id_desc'              => 'ID of the role assigned to inactive users',
+    'ignore_role_id'                     => 'Ignore Role ID',
+    'ignore_role_id_desc'                => 'ID of the role to ignore when syncing.'
 ];

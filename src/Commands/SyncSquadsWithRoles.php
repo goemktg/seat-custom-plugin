@@ -58,6 +58,7 @@ class SyncSquadsWithRoles extends Command
         // Get configuration
         $squadRoleMapJson = setting('custom-plugin.role_id_squad_id_map', true);
         $inactiveRoleId = setting('custom-plugin.inactive_role_id', true);
+        $ignoreRoleId = setting('custom-plugin.ignore_role_id', true);
 
         if (empty($squadRoleMapJson)) {
             $this->error('No squad-role mapping configured. Please configure it in Settings.');
@@ -74,13 +75,14 @@ class SyncSquadsWithRoles extends Command
         $this->info('Starting role synchronization based on squad memberships...');
         $this->info('Squad-Role Mapping: ' . $squadRoleMapJson);
         $this->info('Inactive Role ID: ' . ($inactiveRoleId ?: 'Not set'));
+        $this->info('Ignore Role ID: ' . ($ignoreRoleId ?: 'Not set'));
         $this->newLine();
 
         $totalUsers = 0;
         $totalChanges = 0;
 
         // Process each user
-        User::all()->each(function ($user) use ($squadRoleMap, $inactiveRoleId, $isDryRun, &$totalUsers, &$totalChanges) {
+        User::all()->each(function ($user) use ($squadRoleMap, $inactiveRoleId, $ignoreRoleId, $isDryRun, &$totalUsers, &$totalChanges) {
             $totalUsers++;
             
             // Get user's squad memberships
@@ -99,11 +101,17 @@ class SyncSquadsWithRoles extends Command
             if ($inactiveRoleId && in_array($inactiveRoleId, $targetRoleIds)) {
                 $targetRoleIds = array_diff($targetRoleIds, [$inactiveRoleId]);
             }
+            if ($ignoreRoleId && in_array($ignoreRoleId, $targetRoleIds)) {
+                $targetRoleIds = array_diff($targetRoleIds, [$ignoreRoleId]);
+            }
 
             // Get current role assignments (excluding inactive role)
             $currentRoleIds = $user->roles->pluck('id')->toArray();
             if ($inactiveRoleId) {
                 $currentRoleIds = array_diff($currentRoleIds, [$inactiveRoleId]);
+            }
+            if ($ignoreRoleId) {
+                $currentRoleIds = array_diff($currentRoleIds, [$ignoreRoleId]);
             }
 
             // Calculate changes
@@ -116,6 +124,9 @@ class SyncSquadsWithRoles extends Command
                 if (!empty($rolesToAdd)) {
                     $roleNames = Role::whereIn('id', $rolesToAdd)->pluck('title', 'id');
                     foreach ($rolesToAdd as $roleId) {
+                        if ($ignoreRoleId && (string) $roleId === (string) $ignoreRoleId) {
+                            continue;
+                        }
                         $this->info("  + Add role: {$roleNames[$roleId]} (ID: {$roleId})");
                         $totalChanges++;
                         
@@ -128,6 +139,9 @@ class SyncSquadsWithRoles extends Command
                 if (!empty($rolesToRemove)) {
                     $roleNames = Role::whereIn('id', $rolesToRemove)->pluck('title', 'id');
                     foreach ($rolesToRemove as $roleId) {
+                        if ($ignoreRoleId && (string) $roleId === (string) $ignoreRoleId) {
+                            continue;
+                        }
                         $this->warn("  - Remove role: {$roleNames[$roleId]} (ID: {$roleId})");
                         $totalChanges++;
                         

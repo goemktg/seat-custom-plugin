@@ -52,6 +52,7 @@ class SettingsController extends Controller
         $request->validate([
             'role-id-squad-id-map' => 'required|json',
             'inactive-role-id' => 'required|exists:roles,id',
+            'ignore-role-id' => 'required|exists:roles,id',
         ]);
 
         // JSON 구조 및 ID 존재 여부 검증
@@ -95,8 +96,17 @@ class SettingsController extends Controller
                 ->withInput();
         }
 
+        // Ignore Role이 Squad Map에 포함되어 있는지 검증
+        $ignoreRoleId = $request->input('ignore-role-id');
+        if (in_array($ignoreRoleId, $roleIds)) {
+            return redirect()->back()
+                ->withErrors(['role-id-squad-id-map' => 'The ignore role (ID: ' . $ignoreRoleId . ') cannot be included in the squad mapping.'])
+                ->withInput();
+        }
+
         setting(['custom-plugin.role_id_squad_id_map', $request->input('role-id-squad-id-map')], true);
         setting(['custom-plugin.inactive_role_id', $request->input('inactive-role-id')], true);
+        setting(['custom-plugin.ignore_role_id', $request->input('ignore-role-id')], true);
 
         return redirect()->back()
             ->with('success', 'Custom Plugin settings have been updated.');

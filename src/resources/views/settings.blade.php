@@ -24,6 +24,12 @@
                     <input type="number" id="inactive-role-id" name="inactive-role-id" class="form-control"
                         value="{{ setting('custom-plugin.inactive_role_id', true) }}" />
                 </div>
+                <div class="form-group">
+                    <label for="ignore-role-id">{{ trans('custom-plugin::settings.ignore_role_id') }}</label>
+                    <span class="help-block">{{ trans('custom-plugin::settings.ignore_role_id_desc') }}</span>
+                    <input type="number" id="ignore-role-id" name="ignore-role-id" class="form-control"
+                        value="{{ setting('custom-plugin.ignore_role_id', true) }}" />
+                </div>
             </form>
         </div>
         <div class="card-footer clearfix">
