@@ -129,7 +129,7 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
      */
     public function getPackageRepositoryUrl(): string
     {
-        return 'https://github.com/waw-eve/seat-custom-plugin';
+        return 'https://github.com/goemktg/seat-custom-plugin';
     }
 
     /**
@@ -153,7 +153,7 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
      */
     public function getPackagistVendorName(): string
     {
-        return 'alliancewaw';
+        return 'goemktg';
     }
 
 }
