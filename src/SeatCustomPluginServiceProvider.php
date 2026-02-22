@@ -22,6 +22,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 namespace Goemktg\Seat\SeatCustomPlugin;
 
 use Seat\Services\AbstractSeatPlugin;
+use Goemktg\Seat\SeatCustomPlugin\Commands\SyncSquadsWithRoles;
 
 /**
  * Class SeatCustomPluginServiceProvider.
@@ -32,6 +33,8 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
 {
     public function boot()
     {
+        $this->add_commands();
+        
         $this->add_routes();
 
         $this->add_publications();
@@ -53,6 +56,16 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
 
         // Register generic permissions
         $this->registerPermissions(__DIR__ . '/Config/custom-plugin.permissions.php', 'custom-plugin');
+    }
+
+    /**
+     * Register cli commands.
+     */
+    private function add_commands()
+    {
+        $this->commands([
+            SyncSquadsWithRoles::class,
+        ]);
     }
 
     /**

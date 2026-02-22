@@ -21,8 +21,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 return [
-    'role_id_squad_id_map'               => 'Role ID <-> Squad ID Map',
-    'role_id_squad_id_map_desc'          => 'JSON object mapping. SeAT role IDs to SeAT squad IDs. Example: {"12345678": 87654321}',
+    'role_id_squad_id_map'               => 'Squad ID <-> Role ID Map',
+    'role_id_squad_id_map_desc'          => 'JSON object mapping. SeAT squad IDs to SeAT role IDs',
     'inactive_role_id'                   => 'Inactive Role ID',
     'inactive_role_id_desc'              => 'ID of the role assigned to inactive users',
 ];
