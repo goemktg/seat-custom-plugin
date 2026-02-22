@@ -25,10 +25,10 @@
                         value="{{ setting('custom-plugin.inactive_role_id', true) }}" />
                 </div>
                 <div class="form-group">
-                    <label for="ignore-role-id">{{ trans('custom-plugin::settings.ignore_role_id') }}</label>
-                    <span class="help-block">{{ trans('custom-plugin::settings.ignore_role_id_desc') }}</span>
-                    <input type="number" id="ignore-role-id" name="ignore-role-id" class="form-control"
-                        value="{{ setting('custom-plugin.ignore_role_id', true) }}" />
+                    <label for="ignore-role-ids">Ignore Role Ids</label>
+                    <span class="help-block">Array of role IDs to ignore during add/remove. Format: [1, 2, 3]</span>
+                    <input type="text" id="ignore-role-ids" name="ignore-role-ids" class="form-control" placeholder='[1, 2, 3]'
+                        value="{{ setting('custom-plugin.ignore_role_ids', '[]') }}" />
                 </div>
             </form>
         </div>
