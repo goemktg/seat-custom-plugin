@@ -16,8 +16,7 @@
                 <div class="form-group">
                     <label for="role-id-squad-id-map">{{ trans('custom-plugin::settings.role_id_squad_id_map') }}</label>
                     <span class="help-block">{{ trans('custom-plugin::settings.role_id_squad_id_map_desc') }}</span>
-                    <input type="text" id="role-id-squad-id-map" name="role-id-squad-id-map" class="form-control"
-                        value="{{ setting('custom-plugin.role_id_squad_id_map', true) }}" />
+                    <textarea id="role-id-squad-id-map" name="role-id-squad-id-map" class="form-control" rows="6" placeholder='{"role_id": "squad_id"}'>{{ setting('custom-plugin.role_id_squad_id_map', true) }}</textarea>
                 </div>
                 <div class="form-group">
                     <label for="inactive-role-id">{{ trans('custom-plugin::settings.inactive_role_id') }}</label>
