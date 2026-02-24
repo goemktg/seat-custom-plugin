@@ -98,13 +98,16 @@ class SyncSquadsWithRoles extends Command
             }
             $targetRoleIds = array_unique($targetRoleIds);
             
-            // Remove inactive role from target roles if present
-            if ($inactiveRoleId && in_array($inactiveRoleId, $targetRoleIds)) {
-                $targetRoleIds = array_diff($targetRoleIds, [$inactiveRoleId]);
-            }
-            // Remove ignore roles from target roles
-            if (!empty($ignoreRoleIds)) {
-                $targetRoleIds = array_diff($targetRoleIds, $ignoreRoleIds);
+            // Check if user has inactive role - if so, treat as if they should have no roles
+            // This will remove all roles except inactive and ignore roles
+            if ($inactiveRoleId && $user->roles->pluck('id')->contains($inactiveRoleId)) {
+                $targetRoleIds = [];
+            } else {
+                // Only process target roles if user is not inactive
+                // Remove ignore roles from target roles
+                if (!empty($ignoreRoleIds)) {
+                    $targetRoleIds = array_diff($targetRoleIds, $ignoreRoleIds);
+                }
             }
 
             // Get current role assignments (excluding inactive and ignore roles)
