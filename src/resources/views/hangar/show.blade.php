@@ -28,7 +28,7 @@
     @endif
 
     @if($result !== null && $result['syncedAt'] !== null)
-      <span class="text-muted small mb-2" title="{{ $result['syncedAt'] }}">
+      <span class="small mb-2" title="{{ $result['syncedAt'] }}">
         Assets synced {{ \Illuminate\Support\Carbon::parse($result['syncedAt'])->diffForHumans() }}
       </span>
     @endif
@@ -60,22 +60,22 @@
     <div class="row">
       <div class="col-xl-7">
         <div class="card">
-          <div class="card-header p-2">
-            <ul class="nav nav-pills" role="tablist">
-              <li class="nav-item">
-                <a class="nav-link active" data-toggle="tab" href="#cp-problems" role="tab" aria-controls="cp-problems" aria-selected="true">
+          <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <a class="nav-link active" id="cp-problems-tab" data-toggle="tab" href="#cp-problems" role="tab" aria-controls="cp-problems" aria-selected="true">
                   Needs fixing <span class="badge {{ count($report->problems) ? 'badge-danger' : 'badge-secondary' }}">{{ count($report->problems) }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a class="nav-link" data-toggle="tab" href="#cp-unmatched" role="tab" aria-controls="cp-unmatched" aria-selected="false">
+              <li class="nav-item" role="presentation">
+                <a class="nav-link" id="cp-unmatched-tab" data-toggle="tab" href="#cp-unmatched" role="tab" aria-controls="cp-unmatched" aria-selected="false">
                   No matching fit <span class="badge badge-secondary">{{ count($report->unmatched) }}</span>
                 </a>
               </li>
             </ul>
           </div>
           <div class="tab-content">
-            <div class="tab-pane active" id="cp-problems" role="tabpanel">
+            <div class="tab-pane active" id="cp-problems" role="tabpanel" aria-labelledby="cp-problems-tab">
               @forelse($report->problems as $problem)
                 @php($ship = $problem['ship'])
                 @php($match = $problem['match'])
@@ -105,7 +105,7 @@
                 </div>
               @endforelse
             </div>
-            <div class="tab-pane" id="cp-unmatched" role="tabpanel">
+            <div class="tab-pane" id="cp-unmatched" role="tabpanel" aria-labelledby="cp-unmatched-tab">
               @forelse($report->unmatched as $ship)
                 <div class="cp-ship d-flex flex-wrap align-items-baseline">
                   <strong class="mr-2">{{ $ship->name ?: ($result['names'][$ship->typeId] ?? 'Ship') }}</strong>
@@ -168,7 +168,7 @@
                 </tbody>
               </table>
             </div>
-            <div class="card-footer small text-muted">
+            <div class="card-footer small">
               Short = target − matching ships. Ships that need fixing do not count toward the target.
             </div>
           @endif
