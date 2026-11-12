@@ -56,6 +56,9 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
 
         // Register generic permissions
         $this->registerPermissions(__DIR__ . '/Config/custom-plugin.permissions.php', 'custom-plugin');
+
+        // Doctrine hangar check: corporation-scoped so roles can be limited per corporation
+        $this->registerPermissions(__DIR__ . '/Config/custom-plugin.corporation-permissions.php', 'corporation');
     }
 
     /**
