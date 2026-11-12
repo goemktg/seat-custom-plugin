@@ -30,6 +30,20 @@ return [
         'icon'          => 'fas fa-tools',
         'route_segment' => 'custom-plugin',
         'entries'       => [
+            // no 'permission' key: corporation-scoped abilities need a
+            // corporation, so each page lists only the corporations allowed
+            [
+                'name'          => 'Hangar Check',
+                'label'         => 'custom-plugin::menu.hangar_check',
+                'icon'          => 'fas fa-clipboard-check',
+                'route'         => 'custom-plugin.hangar.index',
+            ],
+            [
+                'name'          => 'Doctrine Fits',
+                'label'         => 'custom-plugin::menu.doctrine_fits',
+                'icon'          => 'fas fa-rocket',
+                'route'         => 'custom-plugin.fits.pick',
+            ],
             [
                 'name'          => 'Settings',
                 'label'         => 'custom-plugin::menu.settings',

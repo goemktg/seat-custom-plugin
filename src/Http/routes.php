@@ -41,5 +41,29 @@ Route::group([
                 'uses' => 'SettingsController@update'
             ]);
         });
+
+        // Hangar Check: access is decided per corporation inside the pages
+        Route::get('/hangar-check', 'HangarCheckController@index')
+            ->name('custom-plugin.hangar.index');
+        Route::get('/hangar-check/{corporation}', 'HangarCheckController@show')
+            ->name('custom-plugin.hangar.show')
+            ->middleware('can:corporation.doctrine_hangar_view,corporation');
+
+        // Doctrine fits and stagings
+        Route::get('/doctrine-fits', 'DoctrineFitController@pick')
+            ->name('custom-plugin.fits.pick');
+        Route::group([
+            'prefix' => '/doctrine-fits/{corporation}',
+            'middleware' => 'can:corporation.doctrine_fit_manage,corporation',
+        ], function (): void {
+            Route::get('/', 'DoctrineFitController@index')->name('custom-plugin.fits.index');
+            Route::get('/create', 'DoctrineFitController@create')->name('custom-plugin.fits.create');
+            Route::post('/', 'DoctrineFitController@store')->name('custom-plugin.fits.store');
+            Route::get('/{fit}/edit', 'DoctrineFitController@edit')->whereNumber('fit')->name('custom-plugin.fits.edit');
+            Route::put('/{fit}', 'DoctrineFitController@update')->whereNumber('fit')->name('custom-plugin.fits.update');
+            Route::delete('/{fit}', 'DoctrineFitController@destroy')->whereNumber('fit')->name('custom-plugin.fits.destroy');
+            Route::post('/stagings', 'DoctrineFitController@storeStaging')->name('custom-plugin.stagings.store');
+            Route::delete('/stagings/{staging}', 'DoctrineFitController@destroyStaging')->whereNumber('staging')->name('custom-plugin.stagings.destroy');
+        });
     });
 });
