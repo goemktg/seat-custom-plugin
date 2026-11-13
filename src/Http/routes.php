@@ -54,7 +54,7 @@ Route::group([
             ->name('custom-plugin.fits.pick');
         Route::group([
             'prefix' => '/doctrine-fits/{corporation}',
-            'middleware' => 'can:corporation.doctrine_fit_manage,corporation',
+            'middleware' => 'can:corporation.doctrine_hangar_view,corporation',
         ], function (): void {
             Route::get('/', 'DoctrineFitController@index')->name('custom-plugin.fits.index');
             Route::get('/create', 'DoctrineFitController@create')->name('custom-plugin.fits.create');

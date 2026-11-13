@@ -18,7 +18,7 @@ class DoctrineFitController extends Controller
 {
     public function pick(CorporationAccess $access)
     {
-        $corporations = $access->allowed(CorporationAccess::MANAGE);
+        $corporations = $access->allowed();
         if ($corporations->count() === 1) {
             return redirect()->route('custom-plugin.fits.index', $corporations->first()->corporation_id);
         }

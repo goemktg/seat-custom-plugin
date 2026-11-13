@@ -21,8 +21,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 namespace Goemktg\Seat\SeatCustomPlugin;
 
-use Seat\Services\AbstractSeatPlugin;
 use Goemktg\Seat\SeatCustomPlugin\Commands\SyncSquadsWithRoles;
+use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
+use Illuminate\Support\Facades\Gate;
+use Seat\Services\AbstractSeatPlugin;
 
 /**
  * Class SeatCustomPluginServiceProvider.
@@ -44,6 +46,19 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
         $this->add_translations();
 
         $this->add_migrations();
+
+        $this->add_menu_gate();
+    }
+
+    /**
+     * The sidebar can only check an ability without a corporation, so this
+     * global ability passes when the corporation-scoped one passes for any corporation.
+     */
+    private function add_menu_gate(): void
+    {
+        $this->app->scoped(CorporationAccess::class);
+
+        Gate::define(CorporationAccess::MENU, fn ($user) => $this->app->make(CorporationAccess::class)->any($user));
     }
 
     public function register()
@@ -53,9 +68,6 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
 
         // Overload sidebar with your package menu entries
         $this->mergeConfigFrom(__DIR__ . '/Config/package.sidebar.php', 'package.sidebar');
-
-        // Register generic permissions
-        $this->registerPermissions(__DIR__ . '/Config/custom-plugin.permissions.php', 'custom-plugin');
 
         // Doctrine hangar check: corporation-scoped so roles can be limited per corporation
         $this->registerPermissions(__DIR__ . '/Config/custom-plugin.corporation-permissions.php', 'corporation');

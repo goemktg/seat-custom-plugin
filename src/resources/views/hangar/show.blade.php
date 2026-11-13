@@ -4,8 +4,6 @@
 @section('page_header', 'Hangar Check')
 @section('page_description', $corporation->name)
 
-@php($canManage = Gate::allows('corporation.doctrine_fit_manage', $corporation))
-
 @section('full')
   <div class="d-flex flex-wrap align-items-center mb-3 cp-toolbar">
     @if($corporations->count() > 1)
@@ -30,16 +28,14 @@
     @endif
 
     @if($result !== null && $result['syncedAt'] !== null)
-      <span class="text-muted small mb-2" title="{{ $result['syncedAt'] }}">
+      <span class="small mb-2" title="{{ $result['syncedAt'] }}">
         Assets synced {{ \Illuminate\Support\Carbon::parse($result['syncedAt'])->diffForHumans() }}
       </span>
     @endif
 
-    @if($canManage)
-      <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}" class="btn btn-sm btn-default ml-auto mb-2">
-        <i class="fas fa-rocket"></i> Manage fits
-      </a>
-    @endif
+    <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}" class="btn btn-sm btn-default ml-auto mb-2">
+      <i class="fas fa-rocket"></i> Manage fits
+    </a>
   </div>
 
   @if($staging === null)
@@ -48,11 +44,7 @@
         <p class="mb-1"><strong>No staging set up for {{ $corporation->name }}.</strong></p>
         <p class="text-muted mb-0">
           A staging is the station or structure whose corp hangar is checked.
-          @if($canManage)
-            Add one on <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}">Doctrine Fits</a>.
-          @else
-            Ask someone who manages doctrine fits to add one.
-          @endif
+          Add one on <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}">Doctrine Fits</a>.
         </p>
       </div>
     </div>
@@ -68,22 +60,22 @@
     <div class="row">
       <div class="col-xl-7">
         <div class="card">
-          <div class="card-header p-2">
-            <ul class="nav nav-pills" role="tablist">
-              <li class="nav-item">
-                <a class="nav-link active" data-toggle="tab" href="#cp-problems" role="tab" aria-controls="cp-problems" aria-selected="true">
+          <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <a class="nav-link active" id="cp-problems-tab" data-toggle="tab" href="#cp-problems" role="tab" aria-controls="cp-problems" aria-selected="true">
                   Needs fixing <span class="badge {{ count($report->problems) ? 'badge-danger' : 'badge-secondary' }}">{{ count($report->problems) }}</span>
                 </a>
               </li>
-              <li class="nav-item">
-                <a class="nav-link" data-toggle="tab" href="#cp-unmatched" role="tab" aria-controls="cp-unmatched" aria-selected="false">
+              <li class="nav-item" role="presentation">
+                <a class="nav-link" id="cp-unmatched-tab" data-toggle="tab" href="#cp-unmatched" role="tab" aria-controls="cp-unmatched" aria-selected="false">
                   No matching fit <span class="badge badge-secondary">{{ count($report->unmatched) }}</span>
                 </a>
               </li>
             </ul>
           </div>
           <div class="tab-content">
-            <div class="tab-pane active" id="cp-problems" role="tabpanel">
+            <div class="tab-pane active" id="cp-problems" role="tabpanel" aria-labelledby="cp-problems-tab">
               @forelse($report->problems as $problem)
                 @php($ship = $problem['ship'])
                 @php($match = $problem['match'])
@@ -113,7 +105,7 @@
                 </div>
               @endforelse
             </div>
-            <div class="tab-pane" id="cp-unmatched" role="tabpanel">
+            <div class="tab-pane" id="cp-unmatched" role="tabpanel" aria-labelledby="cp-unmatched-tab">
               @forelse($report->unmatched as $ship)
                 <div class="cp-ship d-flex flex-wrap align-items-baseline">
                   <strong class="mr-2">{{ $ship->name ?: ($result['names'][$ship->typeId] ?? 'Ship') }}</strong>
@@ -139,7 +131,7 @@
             <div class="card-body">
               <p class="mb-0 text-muted">
                 No doctrine fits yet.
-                @if($canManage)<a href="{{ route('custom-plugin.fits.create', $corporation->corporation_id) }}">Add the first fit</a>.@endif
+                <a href="{{ route('custom-plugin.fits.create', $corporation->corporation_id) }}">Add the first fit</a>.
               </p>
             </div>
           @else
@@ -176,7 +168,7 @@
                 </tbody>
               </table>
             </div>
-            <div class="card-footer small text-muted">
+            <div class="card-footer small">
               Short = target − matching ships. Ships that need fixing do not count toward the target.
             </div>
           @endif

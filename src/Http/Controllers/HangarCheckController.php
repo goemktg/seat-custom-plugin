@@ -13,7 +13,7 @@ class HangarCheckController extends Controller
 {
     public function index(CorporationAccess $access)
     {
-        $corporations = $access->allowed(CorporationAccess::VIEW);
+        $corporations = $access->allowed();
         if ($corporations->count() === 1) {
             return redirect()->route('custom-plugin.hangar.show', $corporations->first()->corporation_id);
         }
@@ -32,7 +32,7 @@ class HangarCheckController extends Controller
 
         return view('custom-plugin::hangar.show', [
             'corporation' => $corporation,
-            'corporations' => $access->allowed(CorporationAccess::VIEW),
+            'corporations' => $access->allowed(),
             'stagings' => $stagings,
             'staging' => $staging,
             'result' => $staging !== null ? $service->report($staging) : null,

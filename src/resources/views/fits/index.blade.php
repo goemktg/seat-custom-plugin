@@ -56,7 +56,7 @@
                       @if($fit->updated_by && isset($users[$fit->updated_by])) by {{ $users[$fit->updated_by] }}@endif
                     </td>
                     <td class="text-right">
-                      <a href="{{ route('custom-plugin.fits.edit', [$corporation->corporation_id, $fit->id]) }}" class="btn btn-xs btn-default">Edit</a>
+                      <a href="{{ route('custom-plugin.fits.edit', [$corporation->corporation_id, $fit->id]) }}" class="btn btn-sm btn-default">Edit</a>
                     </td>
                   </tr>
                 @endforeach
@@ -85,7 +85,7 @@
                         data-confirm="Remove {{ $s->name }}? Its targets are deleted too." onsubmit="return confirm(this.dataset.confirm)">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="btn btn-xs btn-link text-danger">Remove</button>
+                    <button type="submit" class="btn btn-sm btn-link text-danger">Remove</button>
                   </form>
                 </li>
               @endforeach

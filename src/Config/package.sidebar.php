@@ -29,19 +29,22 @@ return [
         'label'         => 'custom-plugin::menu.main_level',
         'icon'          => 'fas fa-tools',
         'route_segment' => 'custom-plugin',
+        // hide the whole group when no entry below is visible
+        'permission'    => ['custom-plugin.doctrine_menu', 'global.superuser'],
         'entries'       => [
-            // no 'permission' key: corporation-scoped abilities need a
-            // corporation, so each page lists only the corporations allowed
+            // the menu ability is defined in SeatCustomPluginServiceProvider::add_menu_gate()
             [
                 'name'          => 'Hangar Check',
                 'label'         => 'custom-plugin::menu.hangar_check',
                 'icon'          => 'fas fa-clipboard-check',
+                'permission'    => 'custom-plugin.doctrine_menu',
                 'route'         => 'custom-plugin.hangar.index',
             ],
             [
                 'name'          => 'Doctrine Fits',
                 'label'         => 'custom-plugin::menu.doctrine_fits',
                 'icon'          => 'fas fa-rocket',
+                'permission'    => 'custom-plugin.doctrine_menu',
                 'route'         => 'custom-plugin.fits.pick',
             ],
             [

@@ -58,7 +58,7 @@
         <div class="card">
           <div class="card-header"><h3 class="card-title">Holds</h3></div>
           <div class="card-body">
-            <p class="text-muted small">One item per line, as <code>Name 100</code> or <code>Name x100</code>. Ships need at least this much.</p>
+            <p class="text-muted small">One item per line, as <code class="text-body">Name 100</code> or <code class="text-body">Name x100</code>. Ships need at least this much.</p>
             @foreach($bayFields as $field => $bay)
               <div class="form-group">
                 <label for="cp-{{ $field }}">{{ $bayLabels[$field] }}</label>
