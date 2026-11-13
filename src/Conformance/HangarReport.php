@@ -135,7 +135,10 @@ final class HangarReport
      */
     public static function nameKey(?string $name): string
     {
-        return (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', (string) $name);
+        // the lookbehind lets the trailing alternative start only at the head of a
+        // whitespace run, so a long inner run is not rescanned from every position
+        // (quadratic without PCRE JIT; EFT header names reach here uncapped)
+        return (string) preg_replace('/^[\s\p{Z}]+|(?<![\s\p{Z}])[\s\p{Z}]+$/u', '', (string) $name);
     }
 
     /** Case- and spacing-insensitive key, used only to suggest the exact name. */

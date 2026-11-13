@@ -195,6 +195,24 @@ final class HangarReportTest extends TestCase
         $this->assertSame([3, 1, 4, 2], $order(array_reverse($ships)));
     }
 
+    /**
+     * EFT header names reach nameKey with up to ~20000 characters before the
+     * length check, so trimming must stay linear even without PCRE JIT.
+     */
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function testNameKeyStaysLinearOnLongInnerWhitespaceWithoutJit(): void
+    {
+        ini_set('pcre.jit', '0');
+        $name = 'a' . str_repeat(' ', 19986) . 'b';
+
+        $start = hrtime(true);
+        $key = HangarReport::nameKey(" {$name}\u{00A0}");
+        $elapsedMs = (hrtime(true) - $start) / 1e6;
+
+        $this->assertSame($name, $key);
+        $this->assertLessThan(200, $elapsedMs, 'nameKey must not backtrack quadratically');
+    }
+
     public function testNumericAndWhitespaceOnlyNames(): void
     {
         $fits = [self::fit(1, self::ARCHON, '0', [200 => 1]), self::fit(2, self::ARCHON, '123', [201 => 1])];
