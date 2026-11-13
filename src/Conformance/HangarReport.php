@@ -6,18 +6,24 @@ namespace Goemktg\Seat\SeatCustomPlugin\Conformance;
 
 /**
  * The Hangar Check page's content for one staging: ships needing fixes,
- * ships with no fit for their hull, and per-fit target vs conformant counts.
+ * ships not named after any fit, and per-fit target vs ready counts.
+ *
+ * A ship is checked only against fits whose name is exactly the ship's
+ * in-game name (surrounding whitespace aside) and whose hull is the ship's.
  */
 final class HangarReport
 {
     /**
-     * @param  list<array{ship: ShipSnapshot, match: MatchResult}>  $problems
-     * @param  list<ShipSnapshot>  $unmatched
-     * @param  list<array{fitId: int, name: string, target: int, match: int, needFix: int, short: int, fit: CompiledFit}>  $fits
+     * @param  list<array{ship: ShipSnapshot, match: MatchResult}>  $problems  in fit order, then ship name
+     * @param  list<ShipSnapshot>  $unmatched  ships with no fit of their name and hull; hinted ones first
+     * @param  array<int, string>  $suggestions  unmatched ship item id => exact name of a same-hull fit
+     *         that differs only in case or spacing
+     * @param  list<array{fitId: int, name: string, target: int, named: int, match: int, needFix: int, short: int, missing: int, fit: CompiledFit}>  $fits
      */
     private function __construct(
         public readonly array $problems,
         public readonly array $unmatched,
+        public readonly array $suggestions,
         public readonly array $fits,
         public readonly int $conformantCount,
     ) {
@@ -31,21 +37,30 @@ final class HangarReport
      */
     public static function build(array $ships, array $fits, array $targets, FitMatcher $matcher, callable $isShip): self
     {
-        $byHull = [];
+        $byName = [];
+        $byLooseName = [];
         foreach ($fits as $fit) {
-            $byHull[$fit->shipTypeId][] = $fit;
+            $byName[self::nameKey($fit->name)][$fit->shipTypeId][] = $fit;
+            $byLooseName[self::looseKey($fit->name)][$fit->shipTypeId] ??= self::nameKey($fit->name);
         }
 
         $matchCount = [];
         $needFixCount = [];
         $problems = [];
         $unmatched = [];
+        $suggestions = [];
         $conformant = 0;
         foreach ($ships as $ship) {
-            $candidates = $byHull[$ship->typeId] ?? [];
+            if (! $isShip($ship->typeId)) {
+                continue;
+            }
+            $key = self::nameKey($ship->name);
+            $candidates = $key === '' ? [] : ($byName[$key][$ship->typeId] ?? []);
             if ($candidates === []) {
-                if ($isShip($ship->typeId)) {
-                    $unmatched[] = $ship;
+                $unmatched[] = $ship;
+                $hint = $key === '' ? null : ($byLooseName[self::looseKey($key)][$ship->typeId] ?? null);
+                if ($hint !== null) {
+                    $suggestions[$ship->itemId] = $hint;
                 }
                 continue;
             }
@@ -60,30 +75,72 @@ final class HangarReport
             $problems[] = ['ship' => $ship, 'match' => $match];
         }
 
-        usort($problems, static fn (array $a, array $b): int => [$a['match']->fit->order, (string) $a['ship']->name, $a['ship']->itemId]
-            <=> [$b['match']->fit->order, (string) $b['ship']->name, $b['ship']->itemId]);
-        usort($unmatched, static fn (ShipSnapshot $a, ShipSnapshot $b): int => [(string) $a->name, $a->itemId] <=> [(string) $b->name, $b->itemId]);
+        // strcmp, not <=>: PHP compares two numeric strings as numbers, which is not a total order
+        usort($problems, static fn (array $a, array $b): int => ($a['match']->fit->order <=> $b['match']->fit->order)
+            ?: strcmp((string) $a['ship']->name, (string) $b['ship']->name)
+            ?: $a['ship']->itemId <=> $b['ship']->itemId);
+        usort($unmatched, static fn (ShipSnapshot $a, ShipSnapshot $b): int => (isset($suggestions[$b->itemId]) <=> isset($suggestions[$a->itemId]))
+            ?: strcmp((string) $a->name, (string) $b->name)
+            ?: $a->itemId <=> $b->itemId);
 
         $rows = [];
         foreach ($fits as $fit) {
             $target = max(0, (int) ($targets[$fit->id] ?? 0));
             $match = $matchCount[$fit->id] ?? 0;
+            $needFix = $needFixCount[$fit->id] ?? 0;
             $rows[] = [
                 'fitId' => $fit->id,
                 'name' => $fit->name,
                 'target' => $target,
+                'named' => $match + $needFix,
                 'match' => $match,
-                'needFix' => $needFixCount[$fit->id] ?? 0,
+                'needFix' => $needFix,
                 'short' => max(0, $target - $match),
+                // ships still to buy, or to rename after this fit
+                'missing' => max(0, $target - $match - $needFix),
                 'fit' => $fit,
             ];
         }
 
-        return new self($problems, $unmatched, $rows, $conformant);
+        return new self($problems, $unmatched, $suggestions, $rows, $conformant);
     }
 
     public function shortFitCount(): int
     {
         return count(array_filter($this->fits, static fn (array $row): bool => $row['short'] > 0));
+    }
+
+    /**
+     * Problems split per fit, in fit order. Ships of one fit share its name,
+     * so the page heads each group with the fit instead of repeating it.
+     *
+     * @return list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>}>
+     */
+    public function problemGroups(): array
+    {
+        $named = array_column($this->fits, 'named', 'fitId');
+        $groups = [];
+        foreach ($this->problems as $problem) {
+            $fit = $problem['match']->fit;
+            $groups[$fit->id] ??= ['fit' => $fit, 'named' => $named[$fit->id] ?? 0, 'problems' => []];
+            $groups[$fit->id]['problems'][] = $problem;
+        }
+
+        return array_values($groups);
+    }
+
+    /**
+     * Ships and fits pair up by exact name, case included; only surrounding
+     * whitespace (Unicode spaces included) is ignored. An empty key never matches.
+     */
+    public static function nameKey(?string $name): string
+    {
+        return (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', (string) $name);
+    }
+
+    /** Case- and spacing-insensitive key, used only to suggest the exact name. */
+    private static function looseKey(string $name): string
+    {
+        return mb_strtolower((string) preg_replace('/[\s\p{Z}]+/u', ' ', self::nameKey($name)));
     }
 }

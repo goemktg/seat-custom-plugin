@@ -23,7 +23,7 @@
         @if($fits->isEmpty())
           <div class="card-body">
             <p class="mb-1"><strong>No fits yet.</strong></p>
-            <p class="text-muted mb-0">Add a fit by pasting its EFT. Hangar Check then compares every ship of that hull in the corp hangar against it.</p>
+            <p class="text-muted mb-0">Add a fit by pasting its EFT. Hangar Check then compares every corp hangar ship named exactly like the fit against it.</p>
           </div>
         @else
           <div class="table-responsive">

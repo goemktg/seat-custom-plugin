@@ -13,7 +13,7 @@ web
 
 ## Product Purpose
 
-`seat-custom-plugin` is the NIS alliance's own SeAT 5 plugin. This feature checks every assembled ship in a corporation's corp hangar at a chosen staging against the corporation's registered doctrine fits, and shows which ships are wrong (missing or extra modules per slot, missing cargo, container contents, fuel/fleet bay quantities) and how many conformant ships exist versus each fit's target.
+`seat-custom-plugin` is the NIS alliance's own SeAT 5 plugin. This feature checks every assembled ship in a corporation's corp hangar at a chosen staging against the registered doctrine fit that carries exactly the ship's in-game name (and hull), and shows which ships are wrong (missing or extra modules per slot, missing cargo, container contents, fuel/fleet bay quantities), and per fit how many ships are ready out of the target, how many need fixing, and how many are still missing (to buy, or to rename after the fit). Ships not named after any fit are listed separately, with the exact fit name to rename to when they differ only by case or spacing.
 
 Success: the officer opens the page and immediately sees which hangar ships need fixing and what exactly to change, then sees per-fit shortfall.
 
