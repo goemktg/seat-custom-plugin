@@ -21,8 +21,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 namespace Goemktg\Seat\SeatCustomPlugin;
 
-use Seat\Services\AbstractSeatPlugin;
 use Goemktg\Seat\SeatCustomPlugin\Commands\SyncSquadsWithRoles;
+use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
+use Illuminate\Support\Facades\Gate;
+use Seat\Services\AbstractSeatPlugin;
 
 /**
  * Class SeatCustomPluginServiceProvider.
@@ -44,6 +46,20 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
         $this->add_translations();
 
         $this->add_migrations();
+
+        $this->add_menu_gates();
+    }
+
+    /**
+     * The sidebar can only check an ability without a corporation, so these
+     * global abilities pass when the corporation-scoped one passes for any corporation.
+     */
+    private function add_menu_gates(): void
+    {
+        $this->app->scoped(CorporationAccess::class);
+
+        Gate::define(CorporationAccess::VIEW_MENU, fn ($user) => $this->app->make(CorporationAccess::class)->any($user, CorporationAccess::VIEW));
+        Gate::define(CorporationAccess::MANAGE_MENU, fn ($user) => $this->app->make(CorporationAccess::class)->any($user, CorporationAccess::MANAGE));
     }
 
     public function register()
