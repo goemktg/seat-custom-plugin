@@ -21,8 +21,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 return [
-    'register_to_mumble_label'          => 'Register Mumble',
-    'register_to_mumble_description'    => 'This permission allow user register to mumble server.',
     'doctrine_hangar_view_label'        => 'View Hangar Check',
     'doctrine_hangar_view_description'  => 'See which doctrine ships in the corporation hangar do not match their fit, and per-fit stock against targets.',
     'doctrine_fit_manage_label'         => 'Manage doctrine fits',

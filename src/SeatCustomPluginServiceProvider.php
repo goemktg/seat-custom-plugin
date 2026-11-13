@@ -54,9 +54,6 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
         // Overload sidebar with your package menu entries
         $this->mergeConfigFrom(__DIR__ . '/Config/package.sidebar.php', 'package.sidebar');
 
-        // Register generic permissions
-        $this->registerPermissions(__DIR__ . '/Config/custom-plugin.permissions.php', 'custom-plugin');
-
         // Doctrine hangar check: corporation-scoped so roles can be limited per corporation
         $this->registerPermissions(__DIR__ . '/Config/custom-plugin.corporation-permissions.php', 'corporation');
     }
