@@ -47,19 +47,18 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
 
         $this->add_migrations();
 
-        $this->add_menu_gates();
+        $this->add_menu_gate();
     }
 
     /**
-     * The sidebar can only check an ability without a corporation, so these
-     * global abilities pass when the corporation-scoped one passes for any corporation.
+     * The sidebar can only check an ability without a corporation, so this
+     * global ability passes when the corporation-scoped one passes for any corporation.
      */
-    private function add_menu_gates(): void
+    private function add_menu_gate(): void
     {
         $this->app->scoped(CorporationAccess::class);
 
-        Gate::define(CorporationAccess::VIEW_MENU, fn ($user) => $this->app->make(CorporationAccess::class)->any($user, CorporationAccess::VIEW));
-        Gate::define(CorporationAccess::MANAGE_MENU, fn ($user) => $this->app->make(CorporationAccess::class)->any($user, CorporationAccess::MANAGE));
+        Gate::define(CorporationAccess::MENU, fn ($user) => $this->app->make(CorporationAccess::class)->any($user));
     }
 
     public function register()

@@ -21,16 +21,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 // Corporation-scoped: a role can be limited to chosen corporations with a
-// corporation filter. CEOs and directors of the corporation always pass.
+// corporation filter. One permission covers both Hangar Check and Doctrine Fits.
+// The key stays doctrine_hangar_view so roles granted on v0.1.5 keep working. CEOs and directors of the corporation always pass.
 return [
     'doctrine_hangar_view' => [
         'label' => 'custom-plugin::permissions.doctrine_hangar_view_label',
         'description' => 'custom-plugin::permissions.doctrine_hangar_view_description',
-        'division' => 'military',
-    ],
-    'doctrine_fit_manage' => [
-        'label' => 'custom-plugin::permissions.doctrine_fit_manage_label',
-        'description' => 'custom-plugin::permissions.doctrine_fit_manage_description',
         'division' => 'military',
     ],
 ];

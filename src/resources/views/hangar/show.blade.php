@@ -4,8 +4,6 @@
 @section('page_header', 'Hangar Check')
 @section('page_description', $corporation->name)
 
-@php($canManage = Gate::allows('corporation.doctrine_fit_manage', $corporation))
-
 @section('full')
   <div class="d-flex flex-wrap align-items-center mb-3 cp-toolbar">
     @if($corporations->count() > 1)
@@ -35,11 +33,9 @@
       </span>
     @endif
 
-    @if($canManage)
-      <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}" class="btn btn-sm btn-default ml-auto mb-2">
-        <i class="fas fa-rocket"></i> Manage fits
-      </a>
-    @endif
+    <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}" class="btn btn-sm btn-default ml-auto mb-2">
+      <i class="fas fa-rocket"></i> Manage fits
+    </a>
   </div>
 
   @if($staging === null)
@@ -48,11 +44,7 @@
         <p class="mb-1"><strong>No staging set up for {{ $corporation->name }}.</strong></p>
         <p class="text-muted mb-0">
           A staging is the station or structure whose corp hangar is checked.
-          @if($canManage)
-            Add one on <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}">Doctrine Fits</a>.
-          @else
-            Ask someone who manages doctrine fits to add one.
-          @endif
+          Add one on <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}">Doctrine Fits</a>.
         </p>
       </div>
     </div>
@@ -139,7 +131,7 @@
             <div class="card-body">
               <p class="mb-0 text-muted">
                 No doctrine fits yet.
-                @if($canManage)<a href="{{ route('custom-plugin.fits.create', $corporation->corporation_id) }}">Add the first fit</a>.@endif
+                <a href="{{ route('custom-plugin.fits.create', $corporation->corporation_id) }}">Add the first fit</a>.
               </p>
             </div>
           @else

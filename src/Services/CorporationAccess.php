@@ -12,16 +12,15 @@ use Illuminate\Support\Facades\Gate;
 use Seat\Eveapi\Models\Corporation\CorporationInfo;
 
 /**
- * Corporations the current user may open for a corporation-scoped ability.
+ * Corporations the current user may open Hangar Check and Doctrine Fits for.
  */
 class CorporationAccess
 {
-    public const VIEW = 'corporation.doctrine_hangar_view';
-    public const MANAGE = 'corporation.doctrine_fit_manage';
+    /** One permission covers both Hangar Check and Doctrine Fits. */
+    public const ABILITY = 'corporation.doctrine_hangar_view';
 
-    /** Global abilities the sidebar checks; see SeatCustomPluginServiceProvider::add_menu_gates(). */
-    public const VIEW_MENU = 'custom-plugin.hangar_check_menu';
-    public const MANAGE_MENU = 'custom-plugin.doctrine_fits_menu';
+    /** Global ability the sidebar checks; see SeatCustomPluginServiceProvider::add_menu_gate(). */
+    public const MENU = 'custom-plugin.doctrine_menu';
 
     private const OFFICE_CACHE_KEY = 'custom-plugin:office-corporations';
     private const OFFICE_CACHE_SECONDS = 300;
@@ -32,22 +31,22 @@ class CorporationAccess
     /**
      * @return Collection<int, CorporationInfo>
      */
-    public function allowed(string $ability): Collection
+    public function allowed(): Collection
     {
         return $this->officeCorporations()
-            ->filter(static fn (CorporationInfo $corporation) => Gate::allows($ability, $corporation))
+            ->filter(static fn (CorporationInfo $corporation) => Gate::allows(self::ABILITY, $corporation))
             ->values();
     }
 
     /**
-     * True when the user holds the ability for at least one corporation; stops at the first match.
+     * True when the user holds the permission for at least one corporation; stops at the first match.
      */
-    public function any(Authenticatable $user, string $ability): bool
+    public function any(Authenticatable $user): bool
     {
         $gate = Gate::forUser($user);
 
         return $this->officeCorporations()
-            ->contains(static fn (CorporationInfo $corporation) => $gate->allows($ability, $corporation));
+            ->contains(static fn (CorporationInfo $corporation) => $gate->allows(self::ABILITY, $corporation));
     }
 
     /**

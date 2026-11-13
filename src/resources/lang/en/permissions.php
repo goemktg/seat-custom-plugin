@@ -21,8 +21,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 return [
-    'doctrine_hangar_view_label'        => 'View Hangar Check',
-    'doctrine_hangar_view_description'  => 'See which doctrine ships in the corporation hangar do not match their fit, and per-fit stock against targets.',
-    'doctrine_fit_manage_label'         => 'Manage doctrine fits',
-    'doctrine_fit_manage_description'   => 'Add, edit and delete the corporation\'s doctrine fits, stagings and targets.',
+    'doctrine_hangar_view_label'        => 'Hangar Check and Doctrine Fits',
+    'doctrine_hangar_view_description'  => 'Check the corporation hangar against doctrine fits, and add, edit and delete the fits, stagings and targets.',
 ];
