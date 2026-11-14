@@ -33,7 +33,10 @@
                 <input type="text" id="cp-fit-name" name="fit_name" maxlength="100"
                        class="form-control @error('fit_name') is-invalid @enderror"
                        value="{{ old('fit_name', $fit?->fit_name) }}" aria-describedby="cp-fit-name-help">
-                <small id="cp-fit-name-help" class="form-text text-muted">Leave empty to use the name from the EFT's first line.</small>
+                <small id="cp-fit-name-help" class="form-text text-muted">
+                  Hangar Check compares a ship with this fit only when the ship's in-game name is exactly this, case included.
+                  Leave empty to use the name from the EFT's first line.
+                </small>
                 @error('fit_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
             </div>

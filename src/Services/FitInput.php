@@ -6,6 +6,8 @@ namespace Goemktg\Seat\SeatCustomPlugin\Services;
 
 use Goemktg\Seat\SeatCustomPlugin\Conformance\EftParser;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\FitCompiler;
+use Goemktg\Seat\SeatCustomPlugin\Conformance\FitName;
+use Goemktg\Seat\SeatCustomPlugin\Conformance\HangarReport;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\QuantityLines;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineFit;
 use Illuminate\Http\Request;
@@ -93,8 +95,14 @@ class FitInput
             }
         }
 
-        $doctrine = trim($data['doctrine']);
-        $fitName = trim((string) ($data['fit_name'] ?? '')) ?: ($parsed->fitName !== '' ? $parsed->fitName : $doctrine);
+        $doctrine = HangarReport::nameKey($data['doctrine']);
+        if ($doctrine === '') {
+            $errors['doctrine'][] = 'Type a doctrine name.';
+        }
+        $fitName = FitName::resolve($data['fit_name'] ?? null, $parsed->fitName, $doctrine);
+        if ($fitName === '') {
+            $errors['fit_name'][] = 'Type a fit name. Hangar Check compares ships named exactly like it.';
+        }
         if (mb_strlen($fitName) > 100) {
             $errors['fit_name'][] = 'The fit name from the EFT\'s first line is longer than 100 characters. Type a shorter fit name.';
         }
