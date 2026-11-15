@@ -145,7 +145,15 @@ class DoctrineFitController extends Controller
                 $model->name, $records, $records === 1 ? 'record' : 'records', $records === 1 ? 'it' : 'them',
             )]);
         }
-        $model->delete();
+        try {
+            $model->delete();
+        } catch (QueryException $e) {
+            // a record was added after the check; the foreign key refused the delete
+            if ((int) ($e->errorInfo[1] ?? 0) === 1451) {
+                return back()->withErrors(['staging' => sprintf('Cannot remove %s: the stock ledger has records there. Delete them in Hangar Check first.', $model->name)]);
+            }
+            throw $e;
+        }
 
         return back()->with('success', sprintf('Removed staging %s and its required ship counts.', $model->name));
     }

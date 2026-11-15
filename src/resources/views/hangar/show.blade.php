@@ -365,18 +365,30 @@
         total.classList.toggle('text-danger', stock < 0);
       }
 
+      var loading = 0;
+
       function load(button) {
+        var request = ++loading;
         fill(button);
         body.innerHTML = '<p class="text-muted mb-0">Loading the ledger…</p>';
         showTotal();
+        // X-Requested-With keeps this fragment out of the session's "previous URL",
+        // so a rejected record redirects back to Hangar Check, not here.
         fetch(button.getAttribute('data-url'), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
           .then(function (response) {
-            if (!response.ok) {
+            // an expired session redirects to the login page with a 200
+            if (!response.ok || response.redirected) {
               throw new Error(String(response.status));
             }
             return response.text();
           })
           .then(function (html) {
+            if (request !== loading) {
+              return; // another fit was opened meanwhile
+            }
+            if (html.indexOf('cp-stock-panel') === -1) {
+              throw new Error('unexpected response');
+            }
             body.innerHTML = html;
             showTotal();
             if (modal.classList.contains('show')) {
@@ -384,7 +396,9 @@
             }
           })
           .catch(function () {
-            body.innerHTML = '<div class="alert alert-danger mb-0" role="alert">Could not load the ledger. Reload the page and try again.</div>';
+            if (request === loading) {
+              body.innerHTML = '<div class="alert alert-danger mb-0" role="alert">Could not load the ledger. Reload the page (you may need to sign in again) and try again.</div>';
+            }
           });
       }
 
@@ -406,6 +420,24 @@
         }
       }
       $(modal).on('shown.bs.modal', focusForm);
+
+      // one record per click: a double click must not record twice
+      modal.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.classList.contains('cp-stock-form')) {
+          return;
+        }
+        if (form.dataset.sent) {
+          event.preventDefault();
+          return;
+        }
+        form.dataset.sent = '1';
+        var button = form.querySelector('button[type="submit"]');
+        if (button) {
+          button.disabled = true;
+          button.textContent = 'Recording…';
+        }
+      });
 
       $(modal).on('hidden.bs.modal', function () {
         if (opener) {
