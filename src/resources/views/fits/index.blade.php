@@ -12,6 +12,17 @@
     <div class="alert alert-danger mb-3">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>
   @endif
 
+  @if($corporations->count() > 1)
+    <div class="d-flex flex-wrap align-items-center mb-3">
+      <label for="cp-corp" class="sr-only">Corporation</label>
+      <select id="cp-corp" class="form-control form-control-sm w-auto mb-2" onchange="window.location = this.value">
+        @foreach($corporations as $corp)
+          <option value="{{ route('custom-plugin.fits.index', $corp->corporation_id) }}" @selected($corp->corporation_id === $corporation->corporation_id)>{{ $corp->name }}</option>
+        @endforeach
+      </select>
+    </div>
+  @endif
+
   <div class="row">
     <div class="col-xl-8">
       <div class="card">
