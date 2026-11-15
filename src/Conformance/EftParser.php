@@ -25,7 +25,10 @@ final class EftParser
         foreach ($lines as $raw) {
             $line = trim($raw);
             if ($shipName === null) {
-                if (preg_match('/^\[([^,\]]+)(?:,\s*([^\]]*))?\]$/', $line, $m)) {
+                // In-game ship names may contain any character, brackets and commas
+                // included, so (as pyfa does) the ship type ends at the first comma
+                // and the fit name runs to the last ']' of the line.
+                if (preg_match('/^\[([^,\]]+)(?:,(.*))?\]$/s', $line, $m)) {
                     $shipName = trim($m[1]);
                     $fitName = trim($m[2] ?? '');
                 }

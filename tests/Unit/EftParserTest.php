@@ -88,6 +88,51 @@ EFT;
         $this->assertSame(['Capital Remote Armor Repairer I' => 1], $eft->slots['low']);
     }
 
+    /**
+     * In-game ship names may hold any printable character, including the
+     * brackets and commas the EFT header itself uses. Like pyfa, the ship
+     * type ends at the first comma and the fit name runs to the last ']'.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function headers(): array
+    {
+        return [
+            'brackets and quotes' => ["[Imicus, [o''-] Imicus]", 'Imicus', "[o''-] Imicus"],
+            'only a closing bracket' => ['[Imicus, Scout] 1]', 'Imicus', 'Scout] 1'],
+            'only an opening bracket' => ['[Imicus, [Scout]', 'Imicus', '[Scout'],
+            'commas' => ['[Vexor Navy Issue, Kite, v2, long]', 'Vexor Navy Issue', 'Kite, v2, long'],
+            'unicode and symbols' => ['[Imicus, 정찰 #1 <β> & "x"]', 'Imicus', '정찰 #1 <β> & "x"'],
+            'name is brackets only' => ['[Imicus, []]', 'Imicus', '[]'],
+            'no space after comma' => ['[Imicus,Scout]', 'Imicus', 'Scout'],
+            'surrounding spaces' => ['  [ Imicus ,   Scout  ]  ', 'Imicus', 'Scout'],
+            'no fit name' => ['[Imicus]', 'Imicus', ''],
+            'empty fit name' => ['[Imicus, ]', 'Imicus', ''],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('headers')]
+    public function testHeaderAcceptsAnyCharacterInTheFitName(string $header, string $ship, string $fit): void
+    {
+        $eft = EftParser::parse($header . "\nDamage Control II\n");
+
+        $this->assertSame($ship, $eft->shipName);
+        $this->assertSame($fit, $eft->fitName);
+        $this->assertSame(['Damage Control II' => 1], $eft->slots['low']);
+    }
+
+    public function testHeaderNeedsAShipTypeAndAClosingBracket(): void
+    {
+        foreach (['[, Scout]', '[Imicus, Scout', '[]', 'Imicus, Scout]'] as $header) {
+            try {
+                EftParser::parse($header . "\nDamage Control II\n");
+                $this->fail('accepted ' . $header);
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function testRejectsTextWithoutHeader(): void
     {
         $this->expectException(\InvalidArgumentException::class);
