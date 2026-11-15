@@ -10,6 +10,7 @@ use Goemktg\Seat\SeatCustomPlugin\Conformance\FitName;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\HangarReport;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\QuantityLines;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineFit;
+use Goemktg\Seat\SeatCustomPlugin\Support\DuplicateFit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -114,6 +115,16 @@ class FitInput
             ->exists();
         if ($duplicate) {
             $errors['fit_name'][] = sprintf('Doctrine "%s" already has a fit named "%s".', $doctrine, $fitName);
+        }
+        if ($hull !== null && $fitName !== '') {
+            // compared by the column collation, like the unique key that backs this check
+            $sameHull = DoctrineFit::where('corporation_id', $corporationId)
+                ->where('ship_type_id', (int) $hull['id'])->where('fit_name', $fitName)
+                ->when($existing !== null, fn ($q) => $q->where('id', '!=', $existing->id))
+                ->first(['fit_name', 'doctrine']);
+            if ($sameHull !== null) {
+                $errors['fit_name'][] = DuplicateFit::sameHullMessage((string) $sameHull->fit_name, (string) $sameHull->doctrine);
+            }
         }
 
         if ($errors !== []) {

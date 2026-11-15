@@ -25,7 +25,7 @@ Unlike generic SeAT fitting plugins (which check pilot skills against fits), thi
 
 - Runs inside SeAT 5 (Laravel, AdminLTE/Bootstrap 4 theme, Blade views) at seat.nisuwaz.com, deployed via `SEAT_PLUGINS` in the Portainer stack.
 - Fits are managed (add, edit, delete) on SeAT itself, per corporation. Stagings are chosen on the page. Required ship counts are per fit and staging.
-- Ships of interest include capitals with variant loadouts (e.g. Zirnitra fits that differ only by container/bay contents) and abyssal modules.
+- Ships of interest include capitals with variant loadouts (e.g. Zirnitra fits that differ only by container/bay contents) and abyssal modules. Each variant carries its own name, and ships are named after the variant they should match.
 
 ## Capabilities and Constraints
 
@@ -33,6 +33,7 @@ Unlike generic SeAT fitting plugins (which check pilot skills against fits), thi
 - Corp hangar items sit under the corporation office (`OfficeFolder`) at the staging, flags `CorpSAG1..7`.
 - Modules with identical group and dogma attributes count as equivalent.
 - Deleting a fit is a hard delete; created/updated-by is recorded.
+- Within a corporation a fit name is unique per doctrine and per hull, compared ignoring upper and lower case and accents, so each hangar ship is compared with at most one fit.
 - The separate eve_helper tool stays as is; no data is migrated from it.
 
 ## Evidence on Hand

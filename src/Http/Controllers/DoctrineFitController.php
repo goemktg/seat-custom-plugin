@@ -7,6 +7,7 @@ use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineStaging;
 use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
 use Goemktg\Seat\SeatCustomPlugin\Services\FitInput;
 use Goemktg\Seat\SeatCustomPlugin\Services\Locations;
+use Goemktg\Seat\SeatCustomPlugin\Support\DuplicateFit;
 use Goemktg\Seat\SeatCustomPlugin\Support\LastCorporation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -156,15 +157,16 @@ class DoctrineFitController extends Controller
 
     /**
      * A unique-key race between the duplicate check and the insert becomes a
-     * form error instead of a 500.
+     * form error instead of a 500. Without a message, a fit save names the
+     * uniqueness rule the key enforces.
      */
-    private static function guardDuplicate(\Closure $write, string $field = 'fit_name', string $message = 'A fit with this doctrine and name was just saved by someone else. Choose another name.'): mixed
+    private static function guardDuplicate(\Closure $write, string $field = 'fit_name', ?string $message = null): mixed
     {
         try {
             return $write();
         } catch (QueryException $e) {
             if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
-                throw ValidationException::withMessages([$field => $message]);
+                throw ValidationException::withMessages([$field => $message ?? DuplicateFit::messageForDriverError((string) ($e->errorInfo[2] ?? $e->getMessage()))]);
             }
             throw $e;
         }
