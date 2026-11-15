@@ -1,255 +1,44 @@
-# Universal Development Template
+# seat-custom-plugin
 
-A standardized template for **any software development project** with **GitHub Copilot** integration and AI-powered workflows.
+The NIS alliance's own plugin for [SeAT 5](https://github.com/eveseat/seat).
 
 ## Features
 
-- 🤖 **AI-Optimized**: Pre-configured GitHub Copilot instructions, custom agents, and agent skills
-- 📊 **Flexible Structure**: Adaptable to any project type (Web, Game, ML/AI, Modding, etc.)
-- 🔄 **Reproducible**: Version control, configuration management, type-safe code practices
-- 📝 **Documentation-First**: Structured documentation workflow with templates
-- 🧩 **Extensible**: Agent skills for automated workflows and best practices
-- 🌐 **Multi-Language**: Support for Korean + English documentation
+### Hangar Check
 
-## Quick Start
+Checks every assembled ship in a corporation's corp hangar at a chosen staging against the doctrine fit that carries exactly the ship's in-game name (and hull). For each ship it shows what to add or remove per slot, and what is short in cargo, containers and fuel or fleet bays. Per fit it shows how many ships are ready out of the target, how many need fixing and how many are still missing. Ships not named after any fit are listed separately, with the exact fit name to rename to when they differ only by case or spacing.
 
-```bash
-# Clone your project
-git clone <repository-url>
-cd <project-directory>
+A refit module that the fit carries in cargo counts as on board when it is fitted, and a fit module carried in cargo counts as fitted. Rigs are never swapped.
 
-# Install dependencies (adapt to your project)
-# Python: uv sync
-# Node.js: npm install
-# .NET: dotnet restore
-# RimWorld Mod: See documents/BUILD_GUIDE.md
+### Doctrine Fits
 
-# Run your project (adapt to your project)
-# Python: uv run python src/main.py
-# Node.js: npm start
-# .NET: dotnet run
-# RimWorld Mod: Copy to mods folder and launch game
+Add, edit and delete doctrine fits (EFT plus bay and container contents), stagings and per-staging targets for a corporation.
+
+### Squad and role sync
+
+`php artisan custom-plugin:sync-squads-with-roles [--dry-run]` gives every user the roles mapped to the squads they belong to. Configure it on the Settings page:
+
+- **Squad ID ↔ Role ID map**: JSON object of SeAT squad IDs to SeAT role IDs.
+- **Inactive role ID**: users holding this role keep it and lose every other role that is not on the ignore list.
+- **Ignore role IDs**: roles the sync never adds or removes.
+
+The sync removes every role that is not mapped or ignored, so add manually granted roles (for example administrators) to the ignore list. Run with `--dry-run` first. The plugin does not schedule the command.
+
+## Installation
+
+Add `goemktg/seat-custom-plugin` to `SEAT_PLUGINS` in the SeAT environment and restart the SeAT containers. Migrations run on start.
+
+## Permissions
+
+- **Hangar Check and Doctrine Fits** (`corporation.doctrine_hangar_view`, per corporation): view Hangar Check and manage the corporation's fits, stagings and targets. Grant it through a SeAT role with a corporation filter.
+- **Settings**: superusers only.
+
+## Development
+
+Unit tests cover the framework-free code in `src/Conformance` and `src/Support` and need no SeAT install:
+
+```sh
+docker run --rm -v "$PWD":/app -w /app php:8.3-cli php phpunit.phar
 ```
 
-## Project Structure
-
-```text
-.
-├── .github/
-│   ├── agents/              # Custom Copilot agents (.agent.md)
-│   ├── skills/              # Agent Skills (workflows)
-│   ├── prompts/             # Reusable prompt templates
-│   └── copilot-instructions.md  # Global Copilot instructions
-├── src/                     # Source code (adapt to your project)
-├── tests/                   # Test files
-├── scripts/                 # Automation scripts
-├── documents/               # Curated documentation
-│   ├── final/               # Published reports
-│   ├── drafts/              # Work in progress
-│   ├── reference/           # External references
-│   │   ├── papers/          # Academic paper summaries
-│   │   └── technical/       # API docs, technical guides
-│   ├── templates/           # Document templates
-│   ├── PROJECT.md           # Project overview (start here!)
-│   ├── AGENT_MANUAL.md      # AI agent operation manual
-│   ├── BUILD_GUIDE.md       # Build instructions
-│   ├── TEST_GUIDE.md        # Testing procedures
-│   ├── QUICKSTART.md        # Quick start guide
-│   └── CHANGELOG.md         # Change history
-├── reference_codes/         # Reference code from external projects
-├── results/                 # Execution results (if applicable)
-├── logs/                    # Application logs
-├── temp/                    # Temporary files (gitignored)
-├── AGENTS.md                # Agent documentation (must-read!)
-└── README.md                # This file
-```
-
-**Note**: The structure above is flexible. Adapt it to your project type:
-- **RimWorld Mod**: See [documents/PROJECT.md](documents/PROJECT.md) for actual structure
-- **ML/AI Research**: Add `configs/`, `results/`, `checkpoints/`
-- **Web Development**: Add `public/`, `api/`, `frontend/`, `backend/`
-- **Game Development**: Add `assets/`, `scenes/`, `prefabs/`
-
-## AI Agents
-
-This template includes pre-configured GitHub Copilot agents for common development tasks:
-
-| Agent | Description |
-| :--- | :--- |
-| `@orchestrator` | Autonomous Task Manager & Master Planner |
-| `@fixer` | Autonomous problem-solving & execution agent |
-| `@doc-writer` | Documentation Writer (creates structured docs) |
-| `@doc-reviewer` | Documentation Reviewer (quality checks) |
-| `@code-generator` | Code generation with best practices |
-| `@code-quality-reviewer` | Code quality & standards compliance |
-| `@validator` | Verification and validation |
-| `@architect` | System architecture & design |
-| `@research-gemini` | Implementation-focused research |
-| `@research-gpt` | Theory-focused research |
-| `@research-claude` | System/Safety-focused research |
-| `@planner-*` | Strategic planning (Gemini/GPT/Claude variants) |
-| `@idea-generator-*` | Ideation (Gemini/GPT/Claude variants) |
-
-**See [AGENTS.md](AGENTS.md) for full documentation.**
-
-## Agent Skills
-
-Agent Skills are specialized workflows automatically loaded by Copilot:
-
-| Skill | Description |
-| :--- | :--- |
-| `documentation` | Standardized doc creation and formatting |
-| `code-review` | Code quality checklist and best practices |
-| `deep-research` | Recursive research workflow (STORM-style) |
-| `data-analysis` | Result visualization and statistical comparison |
-| `skill-extension` | Create and extend agent skills |
-| `external-skill-generation` | Generate skills from external documentation |
-
-**See [AGENTS.md](AGENTS.md) for usage examples.**
-
-## Documentation Workflow
-
-### Document Types
-
-| Type | Location | Purpose |
-| :--- | :--- | :--- |
-| **Final Reports** | `documents/final/` | Completed, reviewed documents |
-| **Drafts** | `documents/drafts/` | Work in progress |
-| **Technical Reference** | `documents/reference/technical/` | API docs, guides |
-| **Paper Summaries** | `documents/reference/papers/` | Research summaries |
-| **Templates** | `documents/templates/` | Standard forms |
-
-### Documentation Guidelines
-
-1. **Write drafts in `documents/drafts/`** - Not ready for publication
-2. **Move to `documents/final/`** - After review and approval
-3. **Use Memory MCP for notes** - Don't create `*.memory.md` files
-4. **Follow project language policy** - See `.github/copilot-instructions.md`
-
-## Development Workflow
-
-### Working with Agents
-
-1. **Check [AGENTS.md](AGENTS.md)** - Find the right agent for your task
-2. **Invoke agent** - Use `@agent-name` in Copilot chat
-3. **Provide context** - Clear requirements and constraints
-4. **Review output** - Validate and iterate
-
-### Using Skills
-
-Skills are automatically loaded by Copilot when relevant. You can also manually load them:
-
-```
-# Load a skill
-@workspace /skills documentation
-
-# Use skill in context
-@doc-writer Create a technical guide for feature X using the documentation skill
-```
-
-### Memory Management
-
-Use **Memory MCP** (`mcp_memory_*` tools) for transient data:
-- Observations/Notes → `mcp_memory_store`
-- Prior context lookup → `mcp_memory_search`
-- List all memories → `mcp_memory_list`
-
-**DO NOT** create local `*.memory.md` files.
-
-## Project Adaptation Guide
-
-### For Different Project Types
-
-**RimWorld Mod Development**:
-- Structure: See [documents/PROJECT.md](documents/PROJECT.md)
-- Build: MSBuild, .NET Framework 4.8
-- Test: In-game testing with Debug Mode
-
-**ML/AI Research**:
-- Add: `configs/`, `results/`, `checkpoints/`
-- Tools: PyTorch, TensorFlow, Weights & Biases
-- Test: Reproducibility checks, statistical validation
-
-**Web Development**:
-- Add: `frontend/`, `backend/`, `api/`, `public/`
-- Tools: React, Node.js, Express, Next.js
-- Test: Unit tests, integration tests, E2E tests
-
-**Game Development**:
-- Add: `assets/`, `scenes/`, `scripts/`, `prefabs/`
-- Tools: Unity, Unreal, Godot
-- Test: Playtesting, performance profiling
-
-**General Software**:
-- Standard structure works out of the box
-- Adapt as needed for your tech stack
-
-### Customization Steps
-
-1. **Update `documents/PROJECT.md`** - Add project-specific details
-2. **Configure `.github/copilot-instructions.md`** - Set coding standards
-3. **Add custom agents** - Create `.github/agents/<name>.agent.md`
-4. **Create skills** - Add `.github/skills/<name>/SKILL.md`
-5. **Update AGENTS.md** - Document your custom agents
-
-## Getting Started
-
-**First-time project setup**:
-
-1. **Read [documents/PROJECT.md](documents/PROJECT.md)** - Understand your project
-2. **Check [AGENTS.md](AGENTS.md)** - Learn about available agents
-3. **Review [documents/QUICKSTART.md](documents/QUICKSTART.md)** - Quick start guide
-4. **Follow [documents/BUILD_GUIDE.md](documents/BUILD_GUIDE.md)** - Build your project
-5. **Use [documents/TEST_GUIDE.md](documents/TEST_GUIDE.md)** - Test your work
-
-## Documentation
-
-- **[documents/PROJECT.md](documents/PROJECT.md)** - Project overview and specifics
-- **[AGENTS.md](AGENTS.md)** - AI agent documentation (must-read!)
-- **[documents/AGENT_MANUAL.md](documents/AGENT_MANUAL.md)** - AI agent operation manual
-- **[documents/QUICKSTART.md](documents/QUICKSTART.md)** - Quick start guide
-- **[documents/CHANGELOG.md](documents/CHANGELOG.md)** - Change history
-- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - Development guidelines
-
-## Reference Codes
-
-The `reference_codes/` directory stores **external code used as reference** during development.
-
-**Management Principles**:
-- ✅ Include: External projects, library examples, prototype code
-- ❌ Exclude: Active project code (`src/`), archived versions (`archive/`), documentation (`documents/`)
-
-**Guidelines**:
-1. Verify and comply with licenses
-2. Document version/date information clearly
-3. Reference code is read-only (no direct modifications)
-4. Regularly update or remove outdated references
-
-**See [documents/PROJECT.md](documents/PROJECT.md) for project-specific references.**
-
-## Contributing
-
-This is a template project. To use it:
-
-1. Clone or fork this repository
-2. Adapt the structure to your project type
-3. Update `documents/PROJECT.md` with your project details
-4. Customize agents and skills as needed
-5. Remove this section and add your project-specific content
-
-## License
-
-[Specify your license]
-
-## Links
-
-- [GitHub Copilot Documentation](https://docs.github.com/en/copilot)
-- [Agent Skills Specification](https://agentskills.io/specification)
-- [VS Code Copilot Customization](https://code.visualstudio.com/docs/copilot/customization/agent-skills)
-- [Keep a Changelog](https://keepachangelog.com/)
-- [Semantic Versioning](https://semver.org/)
-
----
-
-**Template Version**: 1.0.0  
-**Last Updated**: 2026-02-23
+`phpunit.phar` is PHPUnit 10.5, downloaded separately.
