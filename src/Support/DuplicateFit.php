@@ -53,6 +53,27 @@ final class DuplicateFit
     }
 
     /**
+     * The stored fit on the same hull whose name Hangar Check trims to the new
+     * (already trimmed) name, or null. The column collation misses rows kept
+     * from releases before 0.1.7 with leading or trailing non-ASCII space.
+     *
+     * @template T of object{fit_name: string}
+     *
+     * @param  iterable<T>  $sameHull
+     * @return T|null
+     */
+    public static function sameNameKey(iterable $sameHull, string $fitName): ?object
+    {
+        foreach ($sameHull as $row) {
+            if (HangarReport::nameKey((string) $row->fit_name) === $fitName) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Stored fits Hangar Check would compare with the same ship although the
      * unique key may see them as different: their names trim to one
      * HangarReport::nameKey on one hull. Releases before 0.1.7 trimmed ASCII

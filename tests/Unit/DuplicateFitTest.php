@@ -97,6 +97,26 @@ final class DuplicateFitTest extends TestCase
         $this->assertSame(3, $conflicts[0]->fits);
     }
 
+    public function testAStoredNameThatTrimsToTheNewNameIsFound(): void
+    {
+        // a row kept from before 0.1.7 with a leading NBSP, then "Scout" is saved on the same hull
+        $found = DuplicateFit::sameNameKey([
+            (object) ['fit_name' => 'Tackle', 'doctrine' => 'Kiting'],
+            (object) ['fit_name' => "\u{00A0}Scout", 'doctrine' => 'Old'],
+        ], 'Scout');
+
+        $this->assertNotNull($found);
+        $this->assertSame('Old', $found->doctrine);
+    }
+
+    public function testNamesThatTrimToSomethingElseAreNotFound(): void
+    {
+        $this->assertNull(DuplicateFit::sameNameKey([
+            (object) ['fit_name' => 'Scout 2', 'doctrine' => 'Kiting'],
+            (object) ['fit_name' => 'scout', 'doctrine' => 'Kiting'], // the collation check covers case
+        ], 'Scout'));
+    }
+
     public function testDistinctKeysGiveNoNameKeyConflicts(): void
     {
         $this->assertSame([], DuplicateFit::nameKeyConflicts([

@@ -117,11 +117,13 @@ class FitInput
             $errors['fit_name'][] = sprintf('Doctrine "%s" already has a fit named "%s".', $doctrine, $fitName);
         }
         if ($hull !== null && $fitName !== '') {
-            // compared by the column collation, like the unique key that backs this check
-            $sameHull = DoctrineFit::where('corporation_id', $corporationId)
-                ->where('ship_type_id', (int) $hull['id'])->where('fit_name', $fitName)
-                ->when($existing !== null, fn ($q) => $q->where('id', '!=', $existing->id))
-                ->first(['fit_name', 'doctrine']);
+            $onHull = fn () => DoctrineFit::where('corporation_id', $corporationId)
+                ->where('ship_type_id', (int) $hull['id'])
+                ->when($existing !== null, fn ($q) => $q->where('id', '!=', $existing->id));
+            // compared by the column collation, like the unique key that backs this check,
+            // then as Hangar Check pairs names, for rows older releases stored untrimmed
+            $sameHull = $onHull()->where('fit_name', $fitName)->first(['fit_name', 'doctrine'])
+                ?? DuplicateFit::sameNameKey($onHull()->get(['fit_name', 'doctrine']), $fitName);
             if ($sameHull !== null) {
                 $errors['fit_name'][] = DuplicateFit::sameHullMessage((string) $sameHull->fit_name, (string) $sameHull->doctrine);
             }
