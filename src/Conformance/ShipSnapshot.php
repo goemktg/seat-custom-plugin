@@ -14,6 +14,7 @@ final class ShipSnapshot
      * @param  array<int, int>  $cargo  everything under the cargo hold, containers included
      * @param  array<int, int>  $container  items inside containers in cargo or fleet hangar
      * @param  array<string, array<int, int>>  $bays  bay => type id => quantity
+     * @param  array<int, int>  $fleetContainer  the part of $container inside fleet hangar containers (not in $cargo)
      */
     public function __construct(
         public readonly int $itemId,
@@ -24,6 +25,7 @@ final class ShipSnapshot
         public readonly array $cargo,
         public readonly array $container,
         public readonly array $bays,
+        public readonly array $fleetContainer = [],
     ) {
     }
 }

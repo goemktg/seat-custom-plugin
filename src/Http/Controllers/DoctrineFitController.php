@@ -7,8 +7,10 @@ use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineStaging;
 use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
 use Goemktg\Seat\SeatCustomPlugin\Services\FitInput;
 use Goemktg\Seat\SeatCustomPlugin\Services\Locations;
+use Goemktg\Seat\SeatCustomPlugin\Support\LastCorporation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Seat\Eveapi\Models\Corporation\CorporationInfo;
@@ -16,9 +18,13 @@ use Seat\Web\Http\Controllers\Controller;
 
 class DoctrineFitController extends Controller
 {
-    public function pick(CorporationAccess $access)
+    public function pick(Request $request, CorporationAccess $access)
     {
         $corporations = $access->allowed();
+        $last = LastCorporation::pick($corporations->pluck('corporation_id')->all(), $request->cookie(LastCorporation::COOKIE));
+        if ($last !== null) {
+            return redirect()->route('custom-plugin.fits.index', $last);
+        }
         if ($corporations->count() === 1) {
             return redirect()->route('custom-plugin.fits.index', $corporations->first()->corporation_id);
         }
@@ -30,8 +36,9 @@ class DoctrineFitController extends Controller
         ]);
     }
 
-    public function index(CorporationInfo $corporation, Locations $locations)
+    public function index(CorporationInfo $corporation, Locations $locations, CorporationAccess $access)
     {
+        Cookie::queue(LastCorporation::COOKIE, (string) $corporation->corporation_id, LastCorporation::MINUTES);
         $stagings = DoctrineStaging::where('corporation_id', $corporation->corporation_id)->orderBy('name')->get();
         $fits = DoctrineFit::where('corporation_id', $corporation->corporation_id)
             ->orderBy('sort_order')->orderBy('doctrine')->orderBy('fit_name')->get();
@@ -46,6 +53,7 @@ class DoctrineFitController extends Controller
 
         return view('custom-plugin::fits.index', [
             'corporation' => $corporation,
+            'corporations' => $access->allowed(),
             'stagings' => $stagings,
             'fits' => $fits,
             'targets' => $targets,

@@ -29,6 +29,19 @@
       </dd>
     </div>
   @endforeach
+  @foreach([['Refit', $match->refits, 'Fitted, counts as the cargo refit:'], ['In cargo', $match->stowed, 'In cargo, counts as fitted:']] as [$label, $lines, $srLabel])
+    @if($lines !== [])
+      <div class="cp-strip-row cp-strip-quiet">
+        <dt>{{ $label }}</dt>
+        <dd>
+          <span class="sr-only">{{ $srLabel }}</span>
+          @foreach($lines as $line)
+            <span class="badge cp-chip badge-light">{{ $names[$line['typeId']] ?? ('Type #' . $line['typeId']) }}@if($line['count'] > 1) ×{{ number_format($line['count']) }}@endif</span>
+          @endforeach
+        </dd>
+      </div>
+    @endif
+  @endforeach
   @if($match->fit->unresolved !== [])
     <div class="cp-strip-row">
       <dt>Fit</dt>

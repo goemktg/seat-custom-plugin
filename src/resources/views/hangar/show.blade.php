@@ -236,6 +236,8 @@
     .cp-strip-row dt { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; opacity: .7; padding-top: .2rem; margin: 0; }
     .cp-strip-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: .25rem; }
     .cp-chip { font-weight: 500; font-size: .8125rem; white-space: normal; text-align: left; }
+    .cp-strip-quiet dt { font-style: italic; }
+    .cp-strip-quiet .cp-chip { font-weight: 400; border: 1px solid rgba(128, 128, 128, .35); }
     .cp-num td, .cp-num th { font-variant-numeric: tabular-nums; }
     @media (max-width: 575.98px) { .cp-strip-row { grid-template-columns: 1fr; gap: .125rem; } }
   </style>

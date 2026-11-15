@@ -152,6 +152,152 @@ final class FitMatcherTest extends TestCase
         $this->assertSame(['Typo Module II'], $result->fit->unresolved);
     }
 
+    public function testFittedRefitCountsAsTheCargoRefit(): void
+    {
+        // fit: plate in low, refit membrane in cargo; ship: membrane fitted, cargo empty
+        $fit = self::fit(1, ['low' => [100 => 1]], ['cargo' => [200 => 1]]);
+        $ship = self::ship(['low' => [200 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertFalse($result->conformant);
+        $this->assertEquals([['section' => 'low', 'typeId' => 100, 'count' => 1]], $result->missing);
+        $this->assertSame([], $result->extra);
+        $this->assertSame([], $result->cargoMissing);
+        $this->assertEquals([['section' => 'low', 'typeId' => 200, 'count' => 1]], $result->refits);
+        $this->assertSame([], $result->stowed);
+        $this->assertSame(1, $result->score);
+        $this->assertSame(1, $result->itemsToAdd());
+        $this->assertSame(0, $result->itemsToRemove());
+    }
+
+    public function testSwappedRefitAndMainModuleIsConformant(): void
+    {
+        // refit fitted, the fit's main module carried in cargo: everything is on board
+        $fit = self::fit(1, ['low' => [100 => 2]], ['cargo' => [200 => 2, 300 => 10]]);
+        $ship = self::ship(['low' => [200 => 2]], ['cargo' => [100 => 2, 300 => 10]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertTrue($result->conformant);
+        $this->assertSame(0, $result->score);
+        $this->assertSame([], $result->missing);
+        $this->assertSame([], $result->extra);
+        $this->assertSame([], $result->cargoMissing);
+        $this->assertEquals([['section' => 'low', 'typeId' => 200, 'count' => 2]], $result->refits);
+        $this->assertEquals([['section' => 'low', 'typeId' => 100, 'count' => 2]], $result->stowed);
+    }
+
+    public function testFittedRefitCoversOnlyTheQuantityTheFitCarries(): void
+    {
+        $fit = self::fit(1, [], ['cargo' => [200 => 2]]);
+        $ship = self::ship(['low' => [200 => 3]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertEquals([['section' => 'low', 'typeId' => 200, 'count' => 2]], $result->refits);
+        $this->assertEquals([['section' => 'low', 'typeId' => 200, 'count' => 1]], $result->extra);
+        $this->assertSame([], $result->cargoMissing);
+
+        $short = (new FitMatcher())->best(self::ship(['low' => [200 => 1]]), [$fit]);
+        $this->assertEquals([['section' => 'low', 'typeId' => 200, 'count' => 1]], $short->refits);
+        $this->assertEquals([['section' => 'cargo', 'typeId' => 200, 'count' => 1]], $short->cargoMissing);
+    }
+
+    public function testCargoStackIsUsedBeforeAFittedRefit(): void
+    {
+        // the refit is already in cargo, so the fitted copy is a real extra
+        $fit = self::fit(1, [], ['cargo' => [200 => 1]]);
+        $ship = self::ship(['low' => [200 => 1]], ['cargo' => [200 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertSame([], $result->refits);
+        $this->assertEquals([['section' => 'low', 'typeId' => 200, 'count' => 1]], $result->extra);
+    }
+
+    public function testFittedModuleTheFitDoesNotCarryStaysExtra(): void
+    {
+        $fit = self::fit(1, ['low' => [100 => 1]], ['cargo' => [200 => 1]]);
+        $ship = self::ship(['low' => [100 => 1, 999 => 1]], ['cargo' => [200 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertEquals([['section' => 'low', 'typeId' => 999, 'count' => 1]], $result->extra);
+        $this->assertSame([], $result->refits);
+    }
+
+    public function testCargoNeededByTheFitIsNotCountedAsAStowedModule(): void
+    {
+        // one plate in cargo is the fit's own spare, so the empty low slot stays missing
+        $fit = self::fit(1, ['low' => [100 => 1]], ['cargo' => [100 => 1]]);
+        $ship = self::ship([], ['cargo' => [100 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertEquals([['section' => 'low', 'typeId' => 100, 'count' => 1]], $result->missing);
+        $this->assertSame([], $result->stowed);
+    }
+
+    public function testItemsInsideContainersTheFitNeedsAreNotStowedModules(): void
+    {
+        // container contents are also part of cargo; the ones the fit's container needs stay there
+        $fit = self::fit(1, ['low' => [100 => 1]], ['container' => [100 => 1]]);
+        $ship = self::ship([], ['cargo' => [100 => 1], 'container' => [100 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertEquals([['section' => 'low', 'typeId' => 100, 'count' => 1]], $result->missing);
+        $this->assertSame([], $result->stowed);
+    }
+
+    public function testFleetHangarContainersDoNotUseUpLooseCargo(): void
+    {
+        // the fit's container need is met in the fleet hangar, so the loose cargo plate is spare
+        $fit = self::fit(1, ['low' => [100 => 1]], ['container' => [100 => 1]]);
+        $ship = new ShipSnapshot(
+            itemId: 1, typeId: self::HULL, name: 'NIS Zirni 01', division: 3,
+            slots: ['low' => [], 'mid' => [], 'high' => [], 'rig' => []],
+            cargo: [100 => 1],
+            container: [100 => 1],
+            bays: [],
+            fleetContainer: [100 => 1],
+        );
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertTrue($result->conformant);
+        $this->assertEquals([['section' => 'low', 'typeId' => 100, 'count' => 1]], $result->stowed);
+    }
+
+    public function testRigsAreNeverSwapped(): void
+    {
+        // a fitted rig is destroyed when removed, so a rig in cargo is not "fitted"
+        // and a fitted rig does not stand in for one the fit carries in cargo
+        $fit = self::fit(1, ['rig' => [400 => 1]], ['cargo' => [401 => 1]]);
+        $ship = self::ship(['rig' => [401 => 1]], ['cargo' => [400 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertFalse($result->conformant);
+        $this->assertEquals([['section' => 'rig', 'typeId' => 400, 'count' => 1]], $result->missing);
+        $this->assertEquals([['section' => 'rig', 'typeId' => 401, 'count' => 1]], $result->extra);
+        $this->assertEquals([['section' => 'cargo', 'typeId' => 401, 'count' => 1]], $result->cargoMissing);
+        $this->assertSame([], $result->refits);
+        $this->assertSame([], $result->stowed);
+    }
+
+    public function testRefitMatchingHonoursEquivalentTypes(): void
+    {
+        $equivalent = static fn (int $a, int $b): bool => [min($a, $b), max($a, $b)] === [200, 201];
+        $fit = self::fit(1, [], ['cargo' => [200 => 1]]);
+
+        $result = (new FitMatcher($equivalent))->best(self::ship(['low' => [201 => 1]]), [$fit]);
+
+        $this->assertTrue($result->conformant);
+        $this->assertEquals([['section' => 'low', 'typeId' => 201, 'count' => 1]], $result->refits);
+    }
+
     public function testNoCandidatesGivesNull(): void
     {
         $this->assertNull((new FitMatcher())->best(self::ship([]), []));

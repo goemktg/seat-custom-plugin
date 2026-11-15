@@ -16,6 +16,8 @@ final class MatchResult
      * @param  list<array{section: string, typeId: int, count: int}>  $cargoMissing
      * @param  list<array{section: string, typeId: int, count: int}>  $containerMissing
      * @param  list<array{section: string, typeId: int, count: int}>  $bayMissing
+     * @param  list<array{section: string, typeId: int, count: int}>  $refits  fitted in this slot section, counted as the fit's cargo item
+     * @param  list<array{section: string, typeId: int, count: int}>  $stowed  carried in cargo, counted as fitted in this slot section
      */
     public function __construct(
         public readonly CompiledFit $fit,
@@ -26,6 +28,8 @@ final class MatchResult
         public readonly array $cargoMissing,
         public readonly array $containerMissing,
         public readonly array $bayMissing,
+        public readonly array $refits = [],
+        public readonly array $stowed = [],
     ) {
     }
 
