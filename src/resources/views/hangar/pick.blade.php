@@ -30,3 +30,5 @@
     @endif
   </div>
 @stop
+
+@include('custom-plugin::partials.menu-active')

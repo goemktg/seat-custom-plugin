@@ -4,6 +4,7 @@ namespace Goemktg\Seat\SeatCustomPlugin\Http\Controllers;
 
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineFit;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineStaging;
+use Goemktg\Seat\SeatCustomPlugin\Models\StockEntry;
 use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
 use Goemktg\Seat\SeatCustomPlugin\Services\FitInput;
 use Goemktg\Seat\SeatCustomPlugin\Services\Locations;
@@ -137,7 +138,22 @@ class DoctrineFitController extends Controller
     public function destroyStaging(CorporationInfo $corporation, int $staging)
     {
         $model = DoctrineStaging::where('corporation_id', $corporation->corporation_id)->findOrFail($staging);
-        $model->delete();
+        $records = StockEntry::where('staging_id', $model->id)->count();
+        if ($records > 0) {
+            return back()->withErrors(['staging' => sprintf(
+                'Cannot remove %s: the stock ledger has %d %s there. Delete %s in Hangar Check first.',
+                $model->name, $records, $records === 1 ? 'record' : 'records', $records === 1 ? 'it' : 'them',
+            )]);
+        }
+        try {
+            $model->delete();
+        } catch (QueryException $e) {
+            // a record was added after the check; the foreign key refused the delete
+            if ((int) ($e->errorInfo[1] ?? 0) === 1451) {
+                return back()->withErrors(['staging' => sprintf('Cannot remove %s: the stock ledger has records there. Delete them in Hangar Check first.', $model->name)]);
+            }
+            throw $e;
+        }
 
         return back()->with('success', sprintf('Removed staging %s and its required ship counts.', $model->name));
     }
