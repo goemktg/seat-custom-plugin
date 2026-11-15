@@ -22,5 +22,5 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 return [
     'doctrine_hangar_view_label'        => 'Hangar Check and Doctrine Fits',
-    'doctrine_hangar_view_description'  => 'Check the corporation hangar against doctrine fits, and add, edit and delete the fits, stagings and targets.',
+    'doctrine_hangar_view_description'  => 'Check the corporation hangar against doctrine fits, and add, edit and delete the fits, stagings and required ship counts.',
 ];
