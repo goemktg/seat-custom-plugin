@@ -76,6 +76,7 @@ final class ShipTreeBuilder
         $bays = [];
         $cargo = [];
         $container = [];
+        $fleetContainer = [];
 
         // breadth-first walk: [row, bay, depth, root item id of the bay entry]
         $queue = [];
@@ -103,6 +104,9 @@ final class ShipTreeBuilder
             }
             if ($depth > 1 && ($bay === 'Cargo' || $bay === 'FleetHangar')) {
                 self::add($container, $typeId, self::qty($row));
+                if ($bay === 'FleetHangar') {
+                    self::add($fleetContainer, $typeId, self::qty($row));
+                }
             }
             if ($bay !== null && $depth < self::MAX_DEPTH) {
                 foreach ($byParent[(int) $row['item_id']] ?? [] as $child) {
@@ -118,7 +122,7 @@ final class ShipTreeBuilder
 
         return new ShipSnapshot(
             $shipId, (int) $ship['type_id'], $ship['name'] ?? null, $division,
-            $slots, $cargo, $container, $bays,
+            $slots, $cargo, $container, $bays, $fleetContainer,
         );
     }
 

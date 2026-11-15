@@ -35,12 +35,26 @@ final class FitMatcher
         $bestKey = null;
         foreach ($candidates as $fit) {
             [$missing, $extra] = $this->slotDiff($ship->slots, $fit->slots);
-            $cargoMissing = $this->holdShortfall($ship->cargo, $fit->cargo, 'cargo', true);
-            $containerMissing = $this->holdShortfall($ship->container, $fit->container, 'container', true);
+            [$cargoMissing, $cargoLeft] = $this->holdShortfall($ship->cargo, $fit->cargo, 'cargo', true);
+            [$containerMissing, $containerLeft] = $this->holdShortfall($ship->container, $fit->container, 'container', true);
             $bayMissing = [];
             foreach ($fit->bays as $bay => $required) {
-                array_push($bayMissing, ...$this->holdShortfall($ship->bays[$bay] ?? [], $required, (string) $bay, false));
+                array_push($bayMissing, ...$this->holdShortfall($ship->bays[$bay] ?? [], $required, (string) $bay, false)[0]);
             }
+
+            // cargo containers are part of cargo too, so what the fit's containers use there is
+            // not spare; fleet hangar containers are not in cargo and are taken to supply first
+            foreach ($ship->container as $typeId => $qty) {
+                $used = $qty - ($containerLeft[$typeId] ?? 0) - ($ship->fleetContainer[$typeId] ?? 0);
+                if ($used > 0 && isset($cargoLeft[$typeId])) {
+                    $cargoLeft[$typeId] = max(0, $cargoLeft[$typeId] - $used);
+                }
+            }
+
+            // a refit the fit carries in cargo but the ship has fitted is still on board
+            [$cargoMissing, $extra, $refits] = $this->cover($cargoMissing, $extra, false);
+            // and so is a fitted module sitting in cargo beyond what the fit carries there
+            [$missing, , $stowed] = $this->cover($missing, self::lines($cargoLeft, 'cargo'), true);
 
             $moduleMissing = self::total($missing) + count($fit->unresolved);
             $moduleScore = $moduleMissing + self::total($extra);
@@ -49,7 +63,7 @@ final class FitMatcher
             $key = [$moduleScore, $score, $moduleMissing, -$fit->requirementCount(), $fit->order, $fit->id];
             if ($bestKey === null || $key < $bestKey) {
                 $bestKey = $key;
-                $best = new MatchResult($fit, $score === 0, $score, $missing, $extra, $cargoMissing, $containerMissing, $bayMissing);
+                $best = new MatchResult($fit, $score === 0, $score, $missing, $extra, $cargoMissing, $containerMissing, $bayMissing, $refits, $stowed);
             }
         }
 
@@ -109,9 +123,11 @@ final class FitMatcher
      * Minimum-quantity check: more than required is fine. Exact type ids are
      * consumed first so one stack never satisfies two requirements.
      *
+     * Returns the shortfall lines and what is left of the hold after the requirements.
+     *
      * @param  array<int, int>  $actual
      * @param  array<int, int>  $required
-     * @return list<array{section: string, typeId: int, count: int}>
+     * @return array{0: list<array{section: string, typeId: int, count: int}>, 1: array<int, int>}
      */
     private function holdShortfall(array $actual, array $required, string $section, bool $allowEquivalents): array
     {
@@ -142,6 +158,66 @@ final class FitMatcher
             }
             if ($left > 0) {
                 $out[] = ['section' => $section, 'typeId' => (int) $typeId, 'count' => $left];
+            }
+        }
+
+        return [$out, $available];
+    }
+
+    /**
+     * Fills needs from a pool of items found elsewhere on the ship, exact type ids
+     * first, then equivalents. Each covered line keeps the pool item's type id and
+     * the need's section when $needSection, else the pool line's section.
+     *
+     * @param  list<array{section: string, typeId: int, count: int}>  $needs
+     * @param  list<array{section: string, typeId: int, count: int}>  $pool
+     * @return array{0: list<array{section: string, typeId: int, count: int}>, 1: list<array{section: string, typeId: int, count: int}>, 2: list<array{section: string, typeId: int, count: int}>}
+     */
+    private function cover(array $needs, array $pool, bool $needSection): array
+    {
+        $covered = [];
+        foreach ([false, true] as $equivalentPass) {
+            foreach ($needs as $n => $need) {
+                foreach ($pool as $p => $item) {
+                    if ($needs[$n]['count'] === 0) {
+                        break;
+                    }
+                    if ($item['count'] === 0) {
+                        continue;
+                    }
+                    $fits = $equivalentPass
+                        ? $item['typeId'] !== $need['typeId'] && ($this->equivalent)($need['typeId'], $item['typeId'])
+                        : $item['typeId'] === $need['typeId'];
+                    if (! $fits) {
+                        continue;
+                    }
+                    $used = min($needs[$n]['count'], $item['count']);
+                    $needs[$n]['count'] -= $used;
+                    $pool[$p]['count'] -= $used;
+                    $item['count'] -= $used;
+                    $section = $needSection ? $need['section'] : $item['section'];
+                    $key = $section . ':' . $item['typeId'];
+                    $covered[$key] ??= ['section' => $section, 'typeId' => $item['typeId'], 'count' => 0];
+                    $covered[$key]['count'] += $used;
+                }
+            }
+        }
+
+        $left = static fn (array $lines): array => array_values(array_filter($lines, static fn (array $l): bool => $l['count'] > 0));
+
+        return [$left($needs), $left($pool), array_values($covered)];
+    }
+
+    /**
+     * @param  array<int, int>  $quantities
+     * @return list<array{section: string, typeId: int, count: int}>
+     */
+    private static function lines(array $quantities, string $section): array
+    {
+        $out = [];
+        foreach ($quantities as $typeId => $count) {
+            if ($count > 0) {
+                $out[] = ['section' => $section, 'typeId' => (int) $typeId, 'count' => $count];
             }
         }
 

@@ -61,12 +61,15 @@ final class ShipTreeBuilderTest extends TestCase
             self::row(23, 3467, 1, 'Cargo', true),                 // a container in cargo
             self::row(24, 2032, 23, 'Unlocked', false, 4),          // inside the container
             self::row(25, 35662, 23, 'Unlocked', true, 0),          // quantity 0 counts as 1
+            self::row(26, 3467, 1, 'FleetHangar', true),           // a container in the fleet hangar
+            self::row(27, 2032, 26, 'Unlocked', false, 2),
         ]);
 
         $this->assertSame([16274 => 90000], $ship->bays['FuelBay']);
-        $this->assertSame([41489 => 40], $ship->bays['FleetHangar']);
+        $this->assertSame([41489 => 40, 3467 => 1, 2032 => 2], $ship->bays['FleetHangar']);
         $this->assertSame([28668 => 50, 3467 => 1, 2032 => 4, 35662 => 1], $ship->cargo);
-        $this->assertSame([2032 => 4, 35662 => 1], $ship->container);
+        $this->assertSame([2032 => 6, 35662 => 1], $ship->container);
+        $this->assertSame([2032 => 2], $ship->fleetContainer);
     }
 
     public function testDronesFightersAndSubsystemsCountAsCarriedForEftTrailingSections(): void
