@@ -172,7 +172,7 @@
                 <thead>
                   <tr>
                     <th scope="col">Fit</th>
-                    <th scope="col" class="text-right">Ready</th>
+                    <th scope="col" class="text-right">Ready / Required</th>
                     <th scope="col" class="text-right">To fix</th>
                     <th scope="col" class="text-right">Missing</th>
                   </tr>
@@ -191,7 +191,7 @@
                             <span class="text-muted">/ {{ $row['target'] }}</span>
                             @if($row['short'] === 0)<i class="fas fa-check text-success ml-1"></i>@endif
                           </span>
-                          <span class="sr-only">{{ $row['match'] }} of {{ $row['target'] }}, {{ $row['short'] > 0 ? 'below target' : 'target met' }}</span>
+                          <span class="sr-only">{{ $row['match'] }} of {{ $row['target'] }}, {{ $row['short'] > 0 ? 'below the required number' : 'required number met' }}</span>
                         @else
                           {{ $row['match'] }}
                         @endif
@@ -211,7 +211,7 @@
               </table>
             </div>
             <div class="card-footer small">
-              Ready = ships named after the fit and fitted correctly, out of the target.
+              Ready = ships named after the fit and fitted correctly, out of the number required.
               To fix = named right but fitted wrong (listed on the left).
               Missing = ships still to buy, or to rename after the fit.
             </div>

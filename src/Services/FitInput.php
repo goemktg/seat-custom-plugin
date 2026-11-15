@@ -52,6 +52,8 @@ class FitInput
             'targets' => ['nullable', 'array'],
             'targets.*' => ['nullable', 'integer', 'min:0', 'max:10000'],
             'version' => ['nullable', 'string'],
+        ], [], [
+            'targets.*' => 'required ships',
         ]);
 
         if ($existing !== null) {

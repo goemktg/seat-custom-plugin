@@ -13,7 +13,7 @@ web
 
 ## Product Purpose
 
-`seat-custom-plugin` is the NIS alliance's own SeAT 5 plugin. This feature checks every assembled ship in a corporation's corp hangar at a chosen staging against the registered doctrine fit that carries exactly the ship's in-game name (and hull), and shows which ships are wrong (missing or extra modules per slot, missing cargo, container contents, fuel/fleet bay quantities), and per fit how many ships are ready out of the target, how many need fixing, and how many are still missing (to buy, or to rename after the fit). Ships not named after any fit are listed separately, with the exact fit name to rename to when they differ only by case or spacing.
+`seat-custom-plugin` is the NIS alliance's own SeAT 5 plugin. This feature checks every assembled ship in a corporation's corp hangar at a chosen staging against the registered doctrine fit that carries exactly the ship's in-game name (and hull), and shows which ships are wrong (missing or extra modules per slot, missing cargo, container contents, fuel/fleet bay quantities), and per fit how many ships are ready out of the number required, how many need fixing, and how many are still missing (to buy, or to rename after the fit). Ships not named after any fit are listed separately, with the exact fit name to rename to when they differ only by case or spacing.
 
 Success: the officer opens the page and immediately sees which hangar ships need fixing and what exactly to change, then sees per-fit shortfall.
 
@@ -24,7 +24,7 @@ Unlike generic SeAT fitting plugins (which check pilot skills against fits), thi
 ## Operating Context
 
 - Runs inside SeAT 5 (Laravel, AdminLTE/Bootstrap 4 theme, Blade views) at seat.nisuwaz.com, deployed via `SEAT_PLUGINS` in the Portainer stack.
-- Fits are managed (add, edit, delete) on SeAT itself, per corporation. Stagings are chosen on the page. Targets are per fit and staging.
+- Fits are managed (add, edit, delete) on SeAT itself, per corporation. Stagings are chosen on the page. Required ship counts are per fit and staging.
 - Ships of interest include capitals with variant loadouts (e.g. Zirnitra fits that differ only by container/bay contents) and abyssal modules.
 
 ## Capabilities and Constraints

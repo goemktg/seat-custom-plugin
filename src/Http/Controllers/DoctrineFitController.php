@@ -138,7 +138,7 @@ class DoctrineFitController extends Controller
         $model = DoctrineStaging::where('corporation_id', $corporation->corporation_id)->findOrFail($staging);
         $model->delete();
 
-        return back()->with('success', sprintf('Removed staging %s and its targets.', $model->name));
+        return back()->with('success', sprintf('Removed staging %s and its required ship counts.', $model->name));
     }
 
     private function form(CorporationInfo $corporation, ?DoctrineFit $fit)

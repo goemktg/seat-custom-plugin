@@ -81,11 +81,12 @@
         </div>
 
         <div class="card">
-          <div class="card-header"><h3 class="card-title">Targets</h3></div>
+          <div class="card-header"><h3 class="card-title">Required ships</h3></div>
           <div class="card-body">
             @if($stagings->isEmpty())
-              <p class="text-muted mb-0">Add a staging on the <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}">Doctrine Fits</a> page to set targets.</p>
+              <p class="text-muted mb-0">Add a staging on the <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}">Doctrine Fits</a> page to set how many ships each staging needs.</p>
             @else
+              <p class="text-muted small">How many of this fit each staging must hold.</p>
               @foreach($stagings as $s)
                 <div class="form-group row mb-2">
                   <label for="cp-target-{{ $s->id }}" class="col-8 col-form-label col-form-label-sm">{{ $s->name }}</label>

@@ -44,7 +44,7 @@
                   <th scope="col">Doctrine</th>
                   <th scope="col">Fit</th>
                   <th scope="col">Hull</th>
-                  <th scope="col">Targets</th>
+                  <th scope="col">Required</th>
                   <th scope="col">Last edit</th>
                   <th scope="col"><span class="sr-only">Actions</span></th>
                 </tr>
@@ -84,7 +84,7 @@
           <h3 class="card-title">Stagings</h3>
         </div>
         <div class="card-body">
-          <p class="text-muted small">Stations or structures whose corp hangar Hangar Check looks at. Targets are set per staging.</p>
+          <p class="text-muted small">Stations or structures whose corp hangar Hangar Check looks at. Each fit sets how many ships a staging requires.</p>
           @if($stagings->isEmpty())
             <p class="mb-3">No stagings yet.</p>
           @else
@@ -93,7 +93,7 @@
                 <li class="d-flex align-items-center py-1 border-bottom">
                   <span class="mr-auto">{{ $s->name }}</span>
                   <form method="post" action="{{ route('custom-plugin.stagings.destroy', [$corporation->corporation_id, $s->id]) }}"
-                        data-confirm="Remove {{ $s->name }}? Its targets are deleted too." onsubmit="return confirm(this.dataset.confirm)">
+                        data-confirm="Remove {{ $s->name }}? The required ship counts for it are deleted too." onsubmit="return confirm(this.dataset.confirm)">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="btn btn-sm btn-link text-danger">Remove</button>
