@@ -51,10 +51,15 @@ final class FitMatcher
                 }
             }
 
-            // a refit the fit carries in cargo but the ship has fitted is still on board
-            [$cargoMissing, $extra, $refits] = $this->cover($cargoMissing, $extra, false);
-            // and so is a fitted module sitting in cargo beyond what the fit carries there
-            [$missing, , $stowed] = $this->cover($missing, self::lines($cargoLeft, 'cargo'), true);
+            // a refit the fit carries in cargo but the ship has fitted is still on board,
+            // and so is a fitted module sitting in cargo beyond what the fit carries there.
+            // Rigs are never swapped: removing a fitted rig destroys it.
+            [$extraRigs, $extraSwappable] = self::splitRigs($extra);
+            [$cargoMissing, $extraSwappable, $refits] = $this->cover($cargoMissing, $extraSwappable, false);
+            $extra = [...$extraSwappable, ...$extraRigs];
+            [$missingRigs, $missingSwappable] = self::splitRigs($missing);
+            [$missingSwappable, , $stowed] = $this->cover($missingSwappable, self::lines($cargoLeft, 'cargo'), true);
+            $missing = [...$missingSwappable, ...$missingRigs];
 
             $moduleMissing = self::total($missing) + count($fit->unresolved);
             $moduleScore = $moduleMissing + self::total($extra);
@@ -206,6 +211,27 @@ final class FitMatcher
         $left = static fn (array $lines): array => array_values(array_filter($lines, static fn (array $l): bool => $l['count'] > 0));
 
         return [$left($needs), $left($pool), array_values($covered)];
+    }
+
+    /**
+     * Slot lines split into rigs and the rest; rig lines come last in slotDiff order.
+     *
+     * @param  list<array{section: string, typeId: int, count: int}>  $lines
+     * @return array{0: list<array{section: string, typeId: int, count: int}>, 1: list<array{section: string, typeId: int, count: int}>}
+     */
+    private static function splitRigs(array $lines): array
+    {
+        $rigs = [];
+        $rest = [];
+        foreach ($lines as $line) {
+            if ($line['section'] === 'rig') {
+                $rigs[] = $line;
+            } else {
+                $rest[] = $line;
+            }
+        }
+
+        return [$rigs, $rest];
     }
 
     /**

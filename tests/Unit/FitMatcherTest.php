@@ -270,6 +270,23 @@ final class FitMatcherTest extends TestCase
         $this->assertEquals([['section' => 'low', 'typeId' => 100, 'count' => 1]], $result->stowed);
     }
 
+    public function testRigsAreNeverSwapped(): void
+    {
+        // a fitted rig is destroyed when removed, so a rig in cargo is not "fitted"
+        // and a fitted rig does not stand in for one the fit carries in cargo
+        $fit = self::fit(1, ['rig' => [400 => 1]], ['cargo' => [401 => 1]]);
+        $ship = self::ship(['rig' => [401 => 1]], ['cargo' => [400 => 1]]);
+
+        $result = (new FitMatcher())->best($ship, [$fit]);
+
+        $this->assertFalse($result->conformant);
+        $this->assertEquals([['section' => 'rig', 'typeId' => 400, 'count' => 1]], $result->missing);
+        $this->assertEquals([['section' => 'rig', 'typeId' => 401, 'count' => 1]], $result->extra);
+        $this->assertEquals([['section' => 'cargo', 'typeId' => 401, 'count' => 1]], $result->cargoMissing);
+        $this->assertSame([], $result->refits);
+        $this->assertSame([], $result->stowed);
+    }
+
     public function testRefitMatchingHonoursEquivalentTypes(): void
     {
         $equivalent = static fn (int $a, int $b): bool => [min($a, $b), max($a, $b)] === [200, 201];
