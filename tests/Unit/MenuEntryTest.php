@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Goemktg\Seat\SeatCustomPlugin\Tests\Unit;
 
 use Goemktg\Seat\SeatCustomPlugin\Support\MenuEntry;
@@ -30,6 +32,17 @@ final class MenuEntryTest extends TestCase
     public function testSettingsBelongsToTheSettingsEntry(): void
     {
         $this->assertSame('custom-plugin.settings', MenuEntry::for('custom-plugin.settings'));
+    }
+
+    public function testEverySidebarEntryLightsUpOnItsOwnRoute(): void
+    {
+        $sidebar = require __DIR__ . '/../../src/Config/package.sidebar.php';
+        $entries = $sidebar['custom-plugin']['entries'];
+        $this->assertNotEmpty($entries);
+
+        foreach ($entries as $entry) {
+            $this->assertSame($entry['route'], MenuEntry::for($entry['route']), $entry['route']);
+        }
     }
 
     public function testRoutesOutsideThePluginHaveNoEntry(): void
