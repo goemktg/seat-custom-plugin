@@ -21,15 +21,25 @@ return new class extends Migration
 
     public function up(): void
     {
-        // GROUP BY compares fit_name by the column collation, exactly as the unique key will
-        // (GROUP_CONCAT may cut a long id list; the count stays exact)
-        $conflicts = DB::table(self::TABLE)
+        // two views of "the same name", both must hold before the key goes in:
+        // the column collation, exactly as the unique key will compare
+        // (GROUP_CONCAT may cut a long id list; the count stays exact) ...
+        $byCollation = DB::table(self::TABLE)
             ->select('corporation_id', 'ship_type_id', 'fit_name', DB::raw('COUNT(*) AS fits'), DB::raw('GROUP_CONCAT(id ORDER BY id) AS ids'))
             ->groupBy('corporation_id', 'ship_type_id', 'fit_name')
             ->havingRaw('COUNT(*) > 1')
             ->orderBy('corporation_id')->orderBy('ship_type_id')
             ->get();
-        $report = DuplicateFit::migrationReport($conflicts);
+        // ... and the name Hangar Check pairs ships by, which also trims non-ASCII
+        // space that releases before 0.1.7 kept in stored names
+        $byNameKey = DuplicateFit::nameKeyConflicts(
+            DB::table(self::TABLE)->select('id', 'corporation_id', 'ship_type_id', 'fit_name')->orderBy('id')->cursor()
+        );
+        $listed = $byCollation->pluck('ids')->all();
+        $report = DuplicateFit::migrationReport([
+            ...$byCollation->all(),
+            ...array_filter($byNameKey, static fn (object $c): bool => ! in_array($c->ids, $listed, true)),
+        ]);
         if ($report !== null) {
             throw new RuntimeException($report);
         }

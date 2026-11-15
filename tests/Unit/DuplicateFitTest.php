@@ -25,6 +25,25 @@ final class DuplicateFitTest extends TestCase
         $this->assertSame(DuplicateFit::RACE_SAME_DOCTRINE, $message);
     }
 
+    public function testOnlyTheKeyClauseDecidesNotTheDuplicateValue(): void
+    {
+        $message = DuplicateFit::messageForDriverError(
+            "1062 Duplicate entry '98000001-Kiting-cp_doctrine_fits_corp_ship_name_unique' for key 'cp_doctrine_fits_corp_doctrine_name_unique'"
+        );
+
+        $this->assertSame(DuplicateFit::RACE_SAME_DOCTRINE, $message);
+    }
+
+    public function testControlCharactersInStoredNamesCannotForgeReportLines(): void
+    {
+        $report = (string) DuplicateFit::migrationReport([
+            (object) ['corporation_id' => 1, 'ship_type_id' => 2, 'fit_name' => "Scout\n- corporation 9, hull type 9, name \"x\": fit ids 1", 'ids' => '4,9'],
+        ]);
+
+        $this->assertSame(3, substr_count($report, "\n") + 1);
+        $this->assertStringContainsString('Scout\n- corporation 9', $report);
+    }
+
     public function testUnknownKeyNamesBothRules(): void
     {
         $this->assertSame(DuplicateFit::RACE_EITHER, DuplicateFit::messageForDriverError('1062 Duplicate entry for key PRIMARY'));
@@ -56,6 +75,34 @@ final class DuplicateFitTest extends TestCase
         $this->assertStringContainsString('corporation 98000001, hull type 11186, name "Scout": fit ids 4,9', $report);
         $this->assertStringContainsString('corporation 98000002, hull type 587, name "Tackle": fit ids 12,13,20', $report);
         $this->assertStringContainsString('Rename or delete', $report);
+    }
+
+    public function testNamesHangarCheckTrimsToTheSameKeyConflictOnOneHull(): void
+    {
+        // older releases trimmed ASCII whitespace only, so these could be stored side by side
+        $conflicts = DuplicateFit::nameKeyConflicts([
+            (object) ['id' => 4, 'corporation_id' => 98000001, 'ship_type_id' => 11186, 'fit_name' => 'Scout'],
+            (object) ['id' => 9, 'corporation_id' => 98000001, 'ship_type_id' => 11186, 'fit_name' => "\u{00A0}Scout"],
+            (object) ['id' => 12, 'corporation_id' => 98000001, 'ship_type_id' => 11186, 'fit_name' => "Scout\u{3000}"],
+            (object) ['id' => 13, 'corporation_id' => 98000001, 'ship_type_id' => 587, 'fit_name' => "\u{00A0}Scout"],
+            (object) ['id' => 14, 'corporation_id' => 98000002, 'ship_type_id' => 11186, 'fit_name' => "\u{00A0}Scout"],
+            (object) ['id' => 15, 'corporation_id' => 98000001, 'ship_type_id' => 11186, 'fit_name' => 'Tackle'],
+        ]);
+
+        $this->assertCount(1, $conflicts);
+        $this->assertSame(98000001, $conflicts[0]->corporation_id);
+        $this->assertSame(11186, $conflicts[0]->ship_type_id);
+        $this->assertSame('Scout', $conflicts[0]->fit_name);
+        $this->assertSame('4,9,12', $conflicts[0]->ids);
+        $this->assertSame(3, $conflicts[0]->fits);
+    }
+
+    public function testDistinctKeysGiveNoNameKeyConflicts(): void
+    {
+        $this->assertSame([], DuplicateFit::nameKeyConflicts([
+            (object) ['id' => 1, 'corporation_id' => 98000001, 'ship_type_id' => 11186, 'fit_name' => 'Scout'],
+            (object) ['id' => 2, 'corporation_id' => 98000001, 'ship_type_id' => 11186, 'fit_name' => 'Scout 2'],
+        ]));
     }
 
     public function testTheExactCountIsShownBesideAPossiblyCutIdList(): void
