@@ -64,6 +64,11 @@ Route::group([
             Route::delete('/{fit}', 'DoctrineFitController@destroy')->whereNumber('fit')->name('custom-plugin.fits.destroy');
             Route::post('/stagings', 'DoctrineFitController@storeStaging')->name('custom-plugin.stagings.store');
             Route::delete('/stagings/{staging}', 'DoctrineFitController@destroyStaging')->whereNumber('staging')->name('custom-plugin.stagings.destroy');
+
+            // Stock ledger per fit and staging, opened from Hangar Check
+            Route::get('/stock/{staging}/{fit}', 'StockController@show')->whereNumber(['staging', 'fit'])->name('custom-plugin.stock.show');
+            Route::post('/stock/{staging}/{fit}', 'StockController@store')->whereNumber(['staging', 'fit'])->name('custom-plugin.stock.store');
+            Route::delete('/stock/entries/{entry}', 'StockController@destroy')->whereNumber('entry')->name('custom-plugin.stock.destroy');
         });
     });
 });

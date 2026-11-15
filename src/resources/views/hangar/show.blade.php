@@ -175,6 +175,7 @@
                     <th scope="col" class="text-right">Ready / Required</th>
                     <th scope="col" class="text-right">To fix</th>
                     <th scope="col" class="text-right">Missing</th>
+                    <th scope="col" class="text-right">Stock</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,6 +206,22 @@
                           @endif
                         </td>
                       @endforeach
+                      @php($ledger = $stock[$row['fitId']] ?? null)
+                      @php($outside = $ledger === null ? 0 : \Goemktg\Seat\SeatCustomPlugin\Support\StockLedger::outsideHangar($ledger, $row['named']))
+                      <td class="text-right text-nowrap">
+                        <button type="button" class="btn btn-link p-0 cp-stock-open {{ $ledger !== null && $ledger < 0 ? 'text-danger font-weight-bold' : '' }}"
+                                data-url="{{ route('custom-plugin.stock.show', [$corporation->corporation_id, $staging->id, $row['fitId']]) }}"
+                                data-fit="{{ $row['fitId'] }}" data-name="{{ $row['name'] }}"
+                                data-hangar="{{ $row['named'] }}" data-required="{{ $row['target'] }}"
+                                aria-label="Stock ledger for {{ $row['name'] }}: {{ $ledger === null ? 'no records' : $ledger . ' ships' }}">
+                          {{ $ledger === null ? '–' : ($ledger < 0 ? '−' . abs($ledger) : $ledger) }}
+                        </button>
+                        @if($ledger !== null && $ledger < 0)
+                          <span class="badge badge-danger ml-1" title="The ledger has more losses than ships. Check the records.">check</span>
+                        @elseif($outside > 0)
+                          <span class="d-block small text-muted">{{ $outside }} outside hangar</span>
+                        @endif
+                      </td>
                     </tr>
                   @endforeach
                 </tbody>
@@ -214,8 +231,36 @@
               Ready = ships named after the fit and fitted correctly, out of the number required.
               To fix = named right but fitted wrong (listed on the left).
               Missing = ships still to buy, or to rename after the fit.
+              Stock = ships the ledger says the corporation owns here (purchases, minus losses, plus adjustments); click it to record or see the history.
             </div>
           @endif
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="cp-stock-modal" tabindex="-1" role="dialog" aria-labelledby="cp-stock-title" aria-hidden="true"
+         @if($stockPanel !== null) data-reopen="{{ $stockPanel['fit']->id }}" @endif>
+      <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="cp-stock-title">
+              <span class="cp-stock-name">{{ $stockPanel['fit']->fit_name ?? 'Stock' }}</span>
+              <small class="text-muted">at {{ $staging->name }}</small>
+            </h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          </div>
+          <div class="modal-body">
+            <dl class="d-flex flex-wrap mb-3 cp-stock-totals cp-num">
+              <div class="mr-4"><dt class="small text-muted text-uppercase">Stock (ledger)</dt><dd class="h4 mb-0 cp-stock-total">–</dd></div>
+              <div class="mr-4"><dt class="small text-muted text-uppercase">In hangar</dt><dd class="h4 mb-0 cp-stock-hangar">–</dd></div>
+              <div><dt class="small text-muted text-uppercase">Required</dt><dd class="h4 mb-0 cp-stock-required">–</dd></div>
+            </dl>
+            <div class="cp-stock-body" aria-live="polite">
+              @if($stockPanel !== null)
+                @include('custom-plugin::hangar._stock', $stockPanel)
+              @endif
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -287,5 +332,96 @@
         $('#cp-unmatched-tab').tab('show').trigger('focus');
       }
     });
+  </script>
+@endpush
+
+@push('javascript')
+  <script>
+    (function () {
+      var modal = document.getElementById('cp-stock-modal');
+      if (!modal) {
+        return;
+      }
+      var body = modal.querySelector('.cp-stock-body');
+      var opener = null;
+
+      function fill(button) {
+        modal.querySelector('.cp-stock-name').textContent = button.getAttribute('data-name');
+        modal.querySelector('.cp-stock-hangar').textContent = button.getAttribute('data-hangar');
+        var required = button.getAttribute('data-required');
+        modal.querySelector('.cp-stock-required').textContent = required === '0' ? '–' : required;
+      }
+
+      function showTotal() {
+        var panel = body.querySelector('.cp-stock-panel');
+        var total = modal.querySelector('.cp-stock-total');
+        if (!panel) {
+          total.textContent = '–';
+          total.classList.remove('text-danger');
+          return;
+        }
+        var stock = parseInt(panel.getAttribute('data-stock'), 10);
+        total.textContent = stock < 0 ? '−' + Math.abs(stock) : String(stock);
+        total.classList.toggle('text-danger', stock < 0);
+      }
+
+      function load(button) {
+        fill(button);
+        body.innerHTML = '<p class="text-muted mb-0">Loading the ledger…</p>';
+        showTotal();
+        fetch(button.getAttribute('data-url'), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error(String(response.status));
+            }
+            return response.text();
+          })
+          .then(function (html) {
+            body.innerHTML = html;
+            showTotal();
+            if (modal.classList.contains('show')) {
+              focusForm();
+            }
+          })
+          .catch(function () {
+            body.innerHTML = '<div class="alert alert-danger mb-0" role="alert">Could not load the ledger. Reload the page and try again.</div>';
+          });
+      }
+
+      document.addEventListener('click', function (event) {
+        var button = event.target instanceof Element ? event.target.closest('.cp-stock-open') : null;
+        if (!button) {
+          return;
+        }
+        opener = button;
+        load(button);
+        $(modal).modal('show');
+      });
+
+      // Bootstrap focuses the dialog itself once shown; move on to the form (or the field in error)
+      function focusForm() {
+        var field = body.querySelector('.is-invalid') || body.querySelector('#cp-stock-ships');
+        if (field) {
+          field.focus();
+        }
+      }
+      $(modal).on('shown.bs.modal', focusForm);
+
+      $(modal).on('hidden.bs.modal', function () {
+        if (opener) {
+          opener.focus();
+        }
+      });
+
+      var reopen = modal.getAttribute('data-reopen');
+      if (reopen) {
+        opener = document.querySelector('.cp-stock-open[data-fit="' + reopen + '"]');
+        if (opener) {
+          fill(opener);
+        }
+        showTotal();
+        $(modal).modal('show');
+      }
+    })();
   </script>
 @endpush
