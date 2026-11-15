@@ -468,3 +468,4 @@
     })();
   </script>
 @endpush
+@include('custom-plugin::partials.menu-active')
