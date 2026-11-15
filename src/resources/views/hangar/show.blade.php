@@ -180,7 +180,7 @@
                 </thead>
                 <tbody>
                   @foreach($report->fits as $row)
-                    <tr>
+                    <tr class="cp-stock-row" title="Open the stock ledger for {{ $row['name'] }}">
                       <td>
                         {{ $row['name'] }}
                         @if($row['fit']->doctrine !== $row['name'])<span class="text-muted small">· {{ $row['fit']->doctrine }}</span>@endif
@@ -284,6 +284,7 @@
     .cp-strip-quiet dt { font-style: italic; }
     .cp-strip-quiet .cp-chip { font-weight: 400; border: 1px solid rgba(128, 128, 128, .35); }
     .cp-num td, .cp-num th { font-variant-numeric: tabular-nums; }
+    .cp-stock-row { cursor: pointer; }
     @media (max-width: 575.98px) { .cp-strip-row { grid-template-columns: 1fr; gap: .125rem; } }
   </style>
 @endpush
@@ -403,7 +404,17 @@
       }
 
       document.addEventListener('click', function (event) {
-        var button = event.target instanceof Element ? event.target.closest('.cp-stock-open') : null;
+        var target = event.target instanceof Element ? event.target : null;
+        var button = target ? target.closest('.cp-stock-open') : null;
+        // anywhere on a fit row opens its ledger too, unless the click was on another control
+        // or ended a text selection (officers copy fit names from this table)
+        if (!button && target && !target.closest('a, button, input, select, label, summary')) {
+          var row = target.closest('tr.cp-stock-row');
+          var selection = window.getSelection ? String(window.getSelection()) : '';
+          if (row && selection === '') {
+            button = row.querySelector('.cp-stock-open');
+          }
+        }
         if (!button) {
           return;
         }
