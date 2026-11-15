@@ -34,6 +34,7 @@ Unlike generic SeAT fitting plugins (which check pilot skills against fits), thi
 - Modules with identical group and dogma attributes count as equivalent.
 - Deleting a fit is a hard delete; created/updated-by is recorded.
 - Within a corporation a fit name is unique per doctrine and per hull, compared ignoring upper and lower case and accents, so each hangar ship is compared with at most one fit.
+- A manual stock ledger per fit and staging (Purchase +, Loss −, Adjust ±) sits beside the hangar count in Hangar Check: stock is the sum of the records, shown with how many ships the ledger counts outside the hangar. Records are dated up to today (UTC), can be deleted but not edited, and keep who recorded them. Negative stock is allowed and flagged. Deleting a fit deletes its records; a staging with records cannot be deleted. The same corporation permission records and views.
 - The separate eve_helper tool stays as is; no data is migrated from it.
 
 ## Evidence on Hand
