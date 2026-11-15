@@ -15,7 +15,7 @@
   @if($corporations->count() > 1)
     <div class="d-flex flex-wrap align-items-center mb-3">
       <label for="cp-corp" class="sr-only">Corporation</label>
-      <select id="cp-corp" class="form-control form-control-sm w-auto mb-2" onchange="window.location = this.value">
+      <select id="cp-corp" class="form-control form-control-sm w-auto mw-100 mb-2" onchange="window.location = this.value">
         @foreach($corporations as $corp)
           <option value="{{ route('custom-plugin.fits.index', $corp->corporation_id) }}" @selected($corp->corporation_id === $corporation->corporation_id)>{{ $corp->name }}</option>
         @endforeach
