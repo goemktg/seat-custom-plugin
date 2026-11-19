@@ -31,12 +31,17 @@ class DoctrineFit extends Model
     protected $fillable = [
         'corporation_id', 'doctrine', 'fit_name', 'ship_type_id', 'eft',
         'bays', 'container', 'sort_order', 'created_by', 'updated_by',
+        // set only by DoctrineSync; the fit form never sends them
+        'source_id', 'sync_state', 'source_missing_at', 'source_eft_hash', 'source_synced_at',
     ];
 
     protected $casts = [
         'corporation_id' => 'integer',
         'ship_type_id' => 'integer',
         'sort_order' => 'integer',
+        'source_id' => 'integer',
+        'source_missing_at' => 'datetime',
+        'source_synced_at' => 'datetime',
         'bays' => 'array',
         'container' => 'array',
     ];
