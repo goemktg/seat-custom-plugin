@@ -66,7 +66,7 @@
                     @error('doctrine-sync-corporations')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                     <small id="cp-doctrine-sync-help" class="form-text text-muted">
                         Type to search the corporations SeAT knows. Only these see Import from doctrine site and get the hourly sync.
-                        Removing one stops its syncing; fits it imported stay.
+                        Removing one stops its syncing; fits it imported stay and can then be edited and deleted like fits added by hand.
                     </small>
                 </div>
             </form>

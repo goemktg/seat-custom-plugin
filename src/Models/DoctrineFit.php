@@ -2,6 +2,8 @@
 
 namespace Goemktg\Seat\SeatCustomPlugin\Models;
 
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\FitLock;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -56,6 +58,13 @@ class DoctrineFit extends Model
             $this->updated_at?->getTimestamp(), $this->doctrine, $this->fit_name, $this->eft,
             $this->bays, $this->container, $this->sort_order, $this->targets(),
         ]));
+    }
+
+    /** Whether the doctrine site owns this fit's doctrine, name and EFT right now (see FitLock). */
+    public function siteLocked(): bool
+    {
+        return FitLock::locked($this->source_id, $this->sync_state,
+            $this->source_id !== null && app(DoctrineSync::class)->enabledFor((int) $this->corporation_id));
     }
 
     /**

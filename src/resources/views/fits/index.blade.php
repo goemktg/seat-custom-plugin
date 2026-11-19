@@ -58,9 +58,11 @@
                     <td>{{ $fit->doctrine }}</td>
                     <td>
                       {{ $fit->fit_name }}
-                      @if($fit->source_id !== null && $fit->sync_state === 'missing')
+                      @if($doctrineSite === null || $fit->source_id === null)
+                        {{-- sync off for this corporation: synced fits are edited like hand-made ones --}}
+                      @elseif($fit->sync_state === 'missing')
                         <span class="badge badge-warning ml-1" title="Removed from the doctrine site {{ $fit->source_missing_at?->diffForHumans() }}. You can now edit or delete it.">Source gone</span>
-                      @elseif($fit->source_id !== null)
+                      @else
                         <span class="badge badge-info ml-1" title="Doctrine, name and EFT follow the doctrine site.">Synced</span>
                       @endif
                     </td>

@@ -14,9 +14,10 @@ final class DoctrineImportUiTest extends TestCase
 {
     public function test_a_synced_fit_is_locked_until_its_source_is_gone(): void
     {
-        self::assertFalse(FitLock::locked(null, null), 'a manual fit');
-        self::assertTrue(FitLock::locked(7, null));
-        self::assertFalse(FitLock::locked(7, 'missing'), 'source gone: editable like a manual fit');
+        self::assertFalse(FitLock::locked(null, null, true), 'a manual fit');
+        self::assertTrue(FitLock::locked(7, null, true));
+        self::assertFalse(FitLock::locked(7, 'missing', true), 'source gone: editable like a manual fit');
+        self::assertFalse(FitLock::locked(7, null, false), 'sync turned off for the corporation: editable');
     }
 
     public function test_locked_fields_keep_the_stored_values_whatever_the_form_sends(): void

@@ -6,17 +6,18 @@ namespace Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync;
 
 /**
  * A fit synced from the doctrine site takes its doctrine, name and EFT from
- * the site. Until its source is gone, the fit form cannot change them; the
- * plugin's own values (required counts, bays, container, sort order) stay
- * editable.
+ * the site. While the site still has it and the corporation still syncs, the
+ * fit form cannot change them; the plugin's own values (required counts,
+ * bays, container, sort order) stay editable.
  */
 final class FitLock
 {
     public const FIELDS = ['doctrine', 'fit_name', 'eft'];
 
-    public static function locked(?int $sourceId, ?string $syncState): bool
+    /** @param bool $syncOn whether the doctrine site sync is on for the fit's corporation */
+    public static function locked(?int $sourceId, ?string $syncState, bool $syncOn): bool
     {
-        return $sourceId !== null && $syncState !== 'missing';
+        return $syncOn && $sourceId !== null && $syncState !== 'missing';
     }
 
     /**

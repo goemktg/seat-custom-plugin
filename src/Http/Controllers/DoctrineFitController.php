@@ -9,7 +9,6 @@ use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
 use Goemktg\Seat\SeatCustomPlugin\Services\FitInput;
 use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
 use Goemktg\Seat\SeatCustomPlugin\Services\Locations;
-use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\FitLock;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SourceStatus;
 use Goemktg\Seat\SeatCustomPlugin\Support\DuplicateFit;
 use Illuminate\Support\Carbon;
@@ -149,7 +148,7 @@ class DoctrineFitController extends Controller
     public function destroy(CorporationInfo $corporation, int $fit)
     {
         $model = $this->findFit($corporation, $fit);
-        if (FitLock::locked($model->source_id, $model->sync_state)) {
+        if ($model->siteLocked()) {
             // the next sync would only add it again
             return back()->withErrors(['fit' => sprintf('"%s" comes from the doctrine site. Remove it there; once it is gone from the site you can delete it here.', $model->fit_name)]);
         }
@@ -209,7 +208,7 @@ class DoctrineFitController extends Controller
             'stagings' => $stagings,
             'targets' => $fit?->targets() ?? [],
             'bayFields' => FitInput::BAY_FIELDS,
-            'locked' => $fit !== null && FitLock::locked($fit->source_id, $fit->sync_state),
+            'locked' => $fit !== null && $fit->siteLocked(),
             'source' => $fit?->source_id === null ? null
                 : DB::table(DoctrineSync::SOURCES)->where('id', $fit->source_id)->first(['name', 'upstream_version']),
         ]);

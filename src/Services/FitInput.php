@@ -64,7 +64,7 @@ class FitInput
         // A synced fit's doctrine, name and EFT belong to the doctrine site: the stored
         // values are kept and not checked again, so newer item data never blocks saving
         // the fields that are the corporation's own.
-        $siteOwned = $existing !== null && FitLock::locked($existing->source_id, $existing->sync_state);
+        $siteOwned = $existing !== null && $existing->siteLocked();
         if ($siteOwned) {
             $data = FitLock::enforce($data, $existing->only(FitLock::FIELDS));
         }
