@@ -63,7 +63,7 @@
                       @elseif($fit->sync_state === 'missing')
                         <span class="badge badge-warning ml-1" title="Removed from the doctrine site {{ $fit->source_missing_at?->diffForHumans() }}. You can now edit or delete it.">Source gone</span>
                       @else
-                        <span class="badge badge-info ml-1" title="Doctrine, name and EFT follow the doctrine site.">Synced</span>
+                        <span class="badge badge-light border ml-1" title="Doctrine, name and EFT follow the doctrine site."><i class="fas fa-lock fa-xs mr-1" aria-hidden="true"></i>Synced</span>
                       @endif
                     </td>
                     <td>{{ $hulls[$fit->ship_type_id] ?? ('Type #' . $fit->ship_type_id) }}</td>
@@ -261,6 +261,11 @@
         }
 
         $(modal).on('show.bs.modal', function () { load(chooseUrl(), 'Asking the doctrine site for its doctrines…'); });
+        // Bootstrap focuses the dialog once it has opened; move on to the first choice if it is already there
+        $(modal).on('shown.bs.modal', function () {
+          var first = body.querySelector('input:not([type=hidden]):not([disabled]), button[type=submit]');
+          if (first) { first.focus(); }
+        });
 
         body.addEventListener('submit', function (e) {
           var form = e.target;

@@ -1,10 +1,11 @@
 {{-- Step 2 of the import window, loaded into #cp-import-body. Nothing is written until Import. --}}
 @php
   $labels = [
-      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::ADD => ['Add', 'badge-primary'],
-      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::UPDATE => ['Update', 'badge-info'],
+      // neutral changes in dark-on-light (Bootstrap's blue and teal badges fail AA contrast); problems keep their colour
+      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::ADD => ['Add', 'badge-light border'],
+      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::UPDATE => ['Update', 'badge-light border'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::LINK => ['Link', 'badge-secondary'],
-      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::RETURNED => ['Back', 'badge-info'],
+      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::RETURNED => ['Back', 'badge-light border'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::MISSING => ['Gone', 'badge-warning'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::HELD => ['Held', 'badge-danger'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::FAILED => ['Not readable', 'badge-danger'],
