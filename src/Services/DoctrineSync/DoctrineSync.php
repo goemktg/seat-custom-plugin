@@ -292,7 +292,7 @@ class DoctrineSync
                 if (in_array($action->kind, [SyncAction::UPDATE, SyncAction::RETURNED, SyncAction::LINK, SyncAction::MISSING, SyncAction::UNCHANGED], true)) {
                     // the plan came from a plain read; a user may have edited the fit since
                     $row = DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->lockForUpdate()
-                        ->first(['id', 'source_id', 'sync_state', 'eft', 'source_eft_hash', 'ship_type_id']);
+                        ->first(['id', 'source_id', 'sync_state', 'eft', 'source_eft_hash', 'ship_type_id', 'fit_name', 'doctrine']);
                     if ($row === null || ! SyncPlanner::stillValid($action, [
                         'source_id' => $row->source_id, 'sync_state' => $row->sync_state, 'eft' => (string) $row->eft,
                         'source_eft_hash' => $row->source_eft_hash, 'ship_type_id' => (int) $row->ship_type_id,
@@ -312,16 +312,19 @@ class DoctrineSync
                     case SyncAction::RETURNED:
                     case SyncAction::LINK:
                         // the last edit is this sync's: its user, or nobody for the hourly sync
-                        DoctrineFit::whereKey($row->id)->firstOrFail()->fill($linkedValues() + ['updated_by' => $userId])->save();
+                        DoctrineFit::whereKey($row->id)->firstOrFail()
+                            ->fill($linkedValues() + self::renamesOf($row, $fit, $doctrine) + ['updated_by' => $userId])->save();
                         break;
                     case SyncAction::MISSING:
                         DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)
                             ->update(['sync_state' => 'missing', 'source_missing_at' => $now, 'updated_by' => $userId]);
                         break;
                     case SyncAction::UNCHANGED:
-                        // follows a doctrine renamed upstream
-                        DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)
-                            ->where('doctrine', '!=', $doctrine->name)->update(['doctrine' => $doctrine->name]);
+                        // follows a doctrine or fit renamed upstream, a change of case or spacing included
+                        $renames = self::renamesOf($row, $fit, $doctrine);
+                        if ($renames !== []) {
+                            DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->update($renames);
+                        }
                         break;
                 }
             });
@@ -347,6 +350,13 @@ class DoctrineSync
         }
 
         return $action;
+    }
+
+    /** @return array<'fit_name'|'doctrine', string> */
+    private static function renamesOf(DoctrineFit $row, ?UpstreamFit $fit, UpstreamDoctrine $doctrine): array
+    {
+        return $fit === null ? [] : SyncPlanner::renames(
+            ['fit_name' => (string) $row->fit_name, 'doctrine' => (string) $row->doctrine], $fit, $doctrine->name);
     }
 
     /** Marks every still-synced fit of a doctrine that left the site as gone, so it can be edited again. */
