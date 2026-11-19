@@ -67,6 +67,15 @@ final class SyncPlanner
             }
 
             $existing = $find($shipTypeId, $fit->fitName, $doctrine->name, $fit->shared);
+            // this doctrine's row of another doctrine-site fit that had this name (renamed or removed there):
+            // not this fit's, so it keeps its counts and stock and is never claimed by name
+            if ($existing !== null && $sourceId !== null && $existing['sourceId'] === $sourceId && $fit->shared !== null
+                && ($existing['sharedId'] ?? null) !== null && (int) $existing['sharedId'] !== $fit->shared) {
+                $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, detail: $existing['missing']
+                    ? sprintf('"%s", gone from the doctrine site, still has this name here. Move its counts and stock if needed, then delete it.', $existing['fitName'] ?? $fit->fitName)
+                    : 'Another fit of this doctrine still has this name here; it is checked again on the next sync.');
+                continue;
+            }
             $key = $existing !== null ? 'id:' . $existing['id'] : $shipTypeId . ':' . mb_strtolower($fit->fitName);
             if (isset($seen[$key]) || isset($seen[':' . mb_strtolower($fit->fitName)])) {
                 $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId,

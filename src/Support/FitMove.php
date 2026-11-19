@@ -10,6 +10,9 @@ namespace Goemktg\Seat\SeatCustomPlugin\Support;
  */
 final class FitMove
 {
+    /** Sync history kind of a move, shown with the doctrine site's changes. */
+    public const EVENT = 'moved';
+
     /** Only a synced fit gone from the doctrine site is moved from; the others are still in use. */
     public static function canMoveFrom(?int $sourceId, ?string $syncState): bool
     {

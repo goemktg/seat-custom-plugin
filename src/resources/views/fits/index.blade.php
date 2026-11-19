@@ -306,6 +306,7 @@
 
         $(modal).on('show.bs.modal', function (e) {
           var button = e.relatedTarget;
+          if (!button || !button.dataset.cpMove) { e.preventDefault(); return; }
           fromId = button.dataset.cpMove;
           from = data.from[fromId];
           form.action = button.dataset.action;
@@ -327,6 +328,8 @@
         $(modal).on('shown.bs.modal', function () { select.focus(); });
         select.addEventListener('change', render);
         form.addEventListener('submit', function () { submit.disabled = true; submit.textContent = 'Moving…'; });
+        // back to a page kept by the browser after submitting: the button works again
+        window.addEventListener('pageshow', function (e) { if (e.persisted) { submit.disabled = false; submit.textContent = 'Move'; } });
       })();
     </script>
   @endpush

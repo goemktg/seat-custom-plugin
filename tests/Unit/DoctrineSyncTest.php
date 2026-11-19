@@ -376,6 +376,22 @@ final class DoctrineSyncTest extends TestCase
         $this->assertSame(['fit_name' => 'Rail Ferox v2'], SyncPlanner::renames(['fit_name' => 'Rail Ferox', 'doctrine' => 'Rail Ferox Fleet'], $doctrine->fits[0], 'Rail Ferox Fleet'));
     }
 
+    public function testANewFitTakingARenamedFitsOldNameDoesNotTakeItsRow(): void
+    {
+        // upstream: fit 42 "Rail Ferox" became "Rail Ferox v2", and a new fit 43 took the old name; 43 comes first
+        $renamed = str_replace('Rail Ferox', 'Rail Ferox v2', self::FEROX);
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX, 'shared' => 43], ['eft' => $renamed, 'shared' => 42]]));
+        $row = ['id' => 5, 'sourceId' => self::SOURCE, 'sharedId' => 42, 'fitName' => 'Rail Ferox', 'eft' => self::FEROX,
+            'eftHash' => UpstreamFit::hash(self::FEROX), 'missing' => false, 'sameHull' => true, 'ownerFollowing' => true, 'ownerName' => 'Rail Ferox Fleet'];
+        $find = static fn (int $ship, string $name, string $doctrine, ?int $shared): ?array => $shared === 42 || $name === 'Rail Ferox' ? $row : null;
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [['id' => 5, 'label' => 'x', 'missing' => false]], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::HELD, SyncAction::UPDATE], array_column($actions, 'kind'));
+        $this->assertNull($actions[0]->fitId, 'the new fit claims no row');
+        $this->assertSame(5, $actions[1]->fitId, 'the renamed fit keeps its row, counts and stock');
+    }
+
     /** @return array{0: UpstreamDoctrine, 1: callable} */
     private static function sharedCopy(array $row, ?int $shared = 42): array
     {

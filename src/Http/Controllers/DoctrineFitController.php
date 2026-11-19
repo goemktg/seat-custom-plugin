@@ -18,6 +18,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Seat\Eveapi\Models\Corporation\CorporationInfo;
 use Seat\Web\Http\Controllers\Controller;
@@ -122,8 +123,9 @@ class DoctrineFitController extends Controller
         $from = [];
         foreach ($gone as $f) {
             $byStaging = $entries->get($f->id, collect())->mapWithKeys(static fn ($e) => [(int) $e->staging_id => (int) $e->entries])->all();
-            if ($counts($f) !== [] || $byStaging !== []) {
-                $from[(int) $f->id] = ['name' => (string) $f->fit_name, 'label' => $label($f), 'ship' => (int) $f->ship_type_id, 'targets' => $counts($f), 'entries' => $byStaging];
+            $required = $counts($f);
+            if ($required !== [] || $byStaging !== []) {
+                $from[(int) $f->id] = ['name' => (string) $f->fit_name, 'label' => $label($f), 'ship' => (int) $f->ship_type_id, 'targets' => $required, 'entries' => $byStaging];
             }
         }
 
@@ -147,7 +149,8 @@ class DoctrineFitController extends Controller
             throw ValidationException::withMessages(['to' => 'Choose another fit to move to.']);
         }
 
-        $message = DB::transaction(function () use ($corporation, $fit, $to): string {
+        $user = $request->user();
+        $message = DB::transaction(function () use ($corporation, $fit, $to, $user): string {
             // both rows locked in id order, so two moves between the same fits cannot deadlock
             $rows = DoctrineFit::where('corporation_id', $corporation->corporation_id)->whereIn('id', [$fit, $to])
                 ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -180,8 +183,19 @@ class DoctrineFitController extends Controller
             }
             DB::table(DoctrineFit::TARGETS_TABLE)->where('fit_id', $fit)->delete();
             $entries = DB::table((new StockEntry())->getTable())->where('fit_id', $fit)->update(['fit_id' => $to]);
+            $summary = FitMove::summary((string) $from->fit_name, (string) $into->fit_name, count($moving), $entries);
 
-            return FitMove::summary((string) $from->fit_name, (string) $into->fit_name, count($moving), $entries);
+            // the ledger's records were moved, not rewritten: the history says who moved them and when
+            DB::table(DoctrineSync::EVENTS)->insert([
+                'run_id' => (string) Str::ulid(), 'corporation_id' => $corporation->corporation_id,
+                'source_id' => $from->source_id, 'fit_id' => $to, 'kind' => FitMove::EVENT,
+                'doctrine_label' => mb_substr((string) $from->doctrine, 0, 100),
+                'fit_label' => mb_substr(sprintf('%s → %s', $from->fit_name, $into->fit_name), 0, 255),
+                'detail' => mb_substr($summary, 0, 500),
+                'created_by' => $user?->id, 'created_by_name' => $user?->name, 'created_at' => now(),
+            ]);
+
+            return $summary;
         });
 
         return redirect()->route('custom-plugin.fits.index', $corporation->corporation_id)->with('success', $message);

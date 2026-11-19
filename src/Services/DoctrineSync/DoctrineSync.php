@@ -394,9 +394,11 @@ class DoctrineSync
             }
 
             return new SyncAction(SyncAction::HELD, $action->label, $fit, $action->shipTypeId, $action->fitId,
-                $action->kind === SyncAction::TAKE_OVER
-                    ? 'This doctrine already has another fit with this name, so the shared fit cannot move to it.'
-                    : 'Another fit already has this name in this doctrine or on this hull.');
+                match (true) {
+                    $action->kind === SyncAction::TAKE_OVER => 'This doctrine already has another fit with this name, so the shared fit cannot move to it.',
+                    str_starts_with((string) $action->detail, 'Renamed from') => 'Renamed on the doctrine site to a name another fit already has here; rename or delete that fit.',
+                    default => 'Another fit already has this name in this doctrine or on this hull.',
+                });
         } catch (\UnexpectedValueException $e) {
             if ($e->getMessage() !== self::CHANGED_MEANWHILE) {
                 throw $e;
