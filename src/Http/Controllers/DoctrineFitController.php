@@ -11,6 +11,7 @@ use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
 use Goemktg\Seat\SeatCustomPlugin\Services\Locations;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SourceStatus;
 use Goemktg\Seat\SeatCustomPlugin\Support\DuplicateFit;
+use Goemktg\Seat\SeatCustomPlugin\Support\FitMove;
 use Illuminate\Support\Carbon;
 use Goemktg\Seat\SeatCustomPlugin\Support\LastCorporation;
 use Illuminate\Database\QueryException;
@@ -52,6 +53,7 @@ class DoctrineFitController extends Controller
             ->get()
             ->groupBy('fit_id');
         $users = DB::table('users')->whereIn('id', $fits->pluck('updated_by')->filter())->pluck('name', 'id');
+        $hulls = DB::table('invTypes')->whereIn('typeID', $fits->pluck('ship_type_id'))->pluck('typeName', 'typeID');
 
         $offices = $locations->officeLocations($corporation->corporation_id);
         $available = array_diff_key($offices, array_flip($stagings->pluck('location_id')->all()));
@@ -64,9 +66,10 @@ class DoctrineFitController extends Controller
             'targets' => $targets,
             'users' => $users,
             'availableLocations' => $available,
-            'hulls' => DB::table('invTypes')->whereIn('typeID', $fits->pluck('ship_type_id'))->pluck('typeName', 'typeID'),
+            'hulls' => $hulls,
             'doctrineSite' => $this->doctrineSite($corporation, $sync),
             'shared' => DoctrineSync::sharedFits($corporation->corporation_id),
+            'move' => $this->moveData($fits, $targets, $stagings, $hulls),
         ]);
     }
 
@@ -99,6 +102,89 @@ class DoctrineFitController extends Controller
             'recent' => DB::table(DoctrineSync::EVENTS)->where('corporation_id', $corporation->corporation_id)
                 ->orderByDesc('created_at')->orderByDesc('id')->limit(3)->get(),
         ];
+    }
+
+    /**
+     * What the Move window needs: fits that can be moved from (gone from the doctrine
+     * site, with counts or stock), every fit as a choice, and counts per staging.
+     *
+     * @return array{from: array<int, array{name: string, label: string, ship: int, targets: array<int, int>, entries: array<int, int>}>, fits: list<array{id: int, name: string, label: string, ship: int, targets: array<int, int>}>, stagings: array<int, string>}
+     */
+    private function moveData($fits, $targets, $stagings, $hulls): array
+    {
+        $label = static fn ($f): string => sprintf('%s (%s) · %s', $f->fit_name, $hulls[$f->ship_type_id] ?? ('Type #' . $f->ship_type_id), $f->doctrine);
+        $counts = static fn ($f): array => $targets->get($f->id, collect())
+            ->mapWithKeys(static fn ($t) => [(int) $t->staging_id => (int) $t->target])->filter()->all();
+        $gone = $fits->filter(static fn ($f) => FitMove::canMoveFrom($f->source_id, $f->sync_state));
+        $entries = $gone->isEmpty() ? collect() : DB::table((new StockEntry())->getTable())
+            ->whereIn('fit_id', $gone->pluck('id'))->groupBy('fit_id', 'staging_id')
+            ->select('fit_id', 'staging_id', DB::raw('COUNT(*) AS entries'))->get()->groupBy('fit_id');
+        $from = [];
+        foreach ($gone as $f) {
+            $byStaging = $entries->get($f->id, collect())->mapWithKeys(static fn ($e) => [(int) $e->staging_id => (int) $e->entries])->all();
+            if ($counts($f) !== [] || $byStaging !== []) {
+                $from[(int) $f->id] = ['name' => (string) $f->fit_name, 'label' => $label($f), 'ship' => (int) $f->ship_type_id, 'targets' => $counts($f), 'entries' => $byStaging];
+            }
+        }
+
+        return [
+            'from' => $from,
+            'fits' => $from === [] ? [] : $fits->map(static fn ($f) => [
+                'id' => (int) $f->id, 'name' => (string) $f->fit_name, 'label' => $label($f), 'ship' => (int) $f->ship_type_id, 'targets' => $counts($f),
+            ])->values()->all(),
+            'stagings' => $stagings->mapWithKeys(static fn ($s) => [(int) $s->id => (string) $s->name])->all(),
+        ];
+    }
+
+    /**
+     * Moves the required counts and stock ledger of a fit gone from the doctrine
+     * site to another fit, e.g. the one it was renamed to there. The gone fit stays.
+     */
+    public function move(Request $request, CorporationInfo $corporation, int $fit)
+    {
+        $to = (int) $request->validate(['to' => ['required', 'integer', 'min:1']])['to'];
+        if ($to === $fit) {
+            throw ValidationException::withMessages(['to' => 'Choose another fit to move to.']);
+        }
+
+        $message = DB::transaction(function () use ($corporation, $fit, $to): string {
+            // both rows locked in id order, so two moves between the same fits cannot deadlock
+            $rows = DoctrineFit::where('corporation_id', $corporation->corporation_id)->whereIn('id', [$fit, $to])
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $from = $rows->get($fit) ?? abort(404);
+            $into = $rows->get($to);
+            if ($into === null) {
+                throw ValidationException::withMessages(['to' => 'Choose a fit of this corporation to move to.']);
+            }
+            if (! FitMove::canMoveFrom($from->source_id, $from->sync_state)) {
+                throw ValidationException::withMessages(['fit' => sprintf('"%s" is still on the doctrine site. Only a fit gone from it can be moved.', $from->fit_name)]);
+            }
+
+            $targets = DB::table(DoctrineFit::TARGETS_TABLE)->whereIn('fit_id', [$fit, $to])->lockForUpdate()->get()->groupBy('fit_id');
+            $countsOf = static fn (int $id): array => $targets->get($id, collect())
+                ->mapWithKeys(static fn ($t) => [(int) $t->staging_id => (int) $t->target])->all();
+            $fromCounts = $countsOf($fit);
+            $clashes = FitMove::clashes($fromCounts, $countsOf($to));
+            if ($clashes !== []) {
+                $names = DoctrineStaging::whereIn('id', $clashes)->orderBy('name')->pluck('name')->all();
+                throw ValidationException::withMessages(['to' => sprintf(
+                    '"%s" already has a required count at %s. Clear it on that fit\'s Edit page first, then move.', $into->fit_name, implode(', ', $names))]);
+            }
+
+            $moving = array_keys(array_filter($fromCounts, static fn (int $n): bool => $n > 0));
+            if ($moving !== []) {
+                // a zero row of the other fit would collide with the (fit, staging) key
+                DB::table(DoctrineFit::TARGETS_TABLE)->where('fit_id', $to)->whereIn('staging_id', $moving)->delete();
+                DB::table(DoctrineFit::TARGETS_TABLE)->where('fit_id', $fit)->whereIn('staging_id', $moving)
+                    ->update(['fit_id' => $to, 'updated_at' => now()]);
+            }
+            DB::table(DoctrineFit::TARGETS_TABLE)->where('fit_id', $fit)->delete();
+            $entries = DB::table((new StockEntry())->getTable())->where('fit_id', $fit)->update(['fit_id' => $to]);
+
+            return FitMove::summary((string) $from->fit_name, (string) $into->fit_name, count($moving), $entries);
+        });
+
+        return redirect()->route('custom-plugin.fits.index', $corporation->corporation_id)->with('success', $message);
     }
 
     public function create(CorporationInfo $corporation)

@@ -83,7 +83,12 @@
                       {{ $fit->updated_at?->diffForHumans() }}
                       @if($fit->updated_by && isset($users[$fit->updated_by])) by {{ $users[$fit->updated_by] }}@endif
                     </td>
-                    <td class="text-right">
+                    <td class="text-right text-nowrap">
+                      @isset($move['from'][$fit->id])
+                        <button type="button" class="btn btn-sm btn-default" data-toggle="modal" data-target="#cp-move"
+                                data-cp-move="{{ $fit->id }}" data-action="{{ route('custom-plugin.fits.move', [$corporation->corporation_id, $fit->id]) }}"
+                                aria-label="Move required counts and stock of {{ $fit->fit_name }}">Move…</button>
+                      @endisset
                       <a href="{{ route('custom-plugin.fits.edit', [$corporation->corporation_id, $fit->id]) }}" class="btn btn-sm btn-default">Edit</a>
                     </td>
                   </tr>
@@ -201,6 +206,41 @@
     </div>
   </div>
 
+  @if($move['from'] !== [])
+    <div class="modal fade" id="cp-move" tabindex="-1" role="dialog" aria-labelledby="cp-move-title" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <form method="post" class="modal-content" id="cp-move-form" action="">
+          @csrf
+          <div class="modal-header">
+            <h2 class="modal-title h5" id="cp-move-title">Move counts and stock</h2>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="cp-move-to">Move to</label>
+              <select class="form-control" id="cp-move-to" name="to" aria-describedby="cp-move-hint"></select>
+              <small class="form-text text-muted" id="cp-move-hint">Fits on the same hull are listed first.</small>
+            </div>
+            <div aria-live="polite">
+              <div class="alert alert-danger py-2" id="cp-move-clash" role="alert" hidden></div>
+              <div class="table-responsive">
+                <table class="table table-sm mb-2">
+                  <thead><tr><th scope="col">Staging</th><th scope="col">Required</th><th scope="col">Stock entries</th></tr></thead>
+                  <tbody id="cp-move-rows"></tbody>
+                </table>
+              </div>
+            </div>
+            <p class="small text-muted mb-0" id="cp-move-note"></p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="cp-move-submit">Move</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  @endif
+
   @if($doctrineSite !== null)
     <div class="modal fade" id="cp-import" tabindex="-1" role="dialog" aria-labelledby="cp-import-title" aria-hidden="true"
          data-choose="{{ route('custom-plugin.fits.import.choose', $corporation->corporation_id) }}">
@@ -216,6 +256,80 @@
     </div>
   @endif
 @stop
+
+@if($move['from'] !== [])
+  @push('javascript')
+    <script type="application/json" id="cp-move-data">@json($move)</script>
+    <script>
+      (function () {
+        var data = JSON.parse(document.getElementById('cp-move-data').textContent);
+        var modal = document.getElementById('cp-move');
+        var form = document.getElementById('cp-move-form');
+        var select = document.getElementById('cp-move-to');
+        var rows = document.getElementById('cp-move-rows');
+        var clash = document.getElementById('cp-move-clash');
+        var submit = document.getElementById('cp-move-submit');
+        var from = null;
+        var fromId = null;
+
+        function cell(text, cls) {
+          var td = document.createElement('td');
+          td.textContent = text;
+          if (cls) { td.className = cls; }
+          return td;
+        }
+
+        function render() {
+          var into = data.fits.find(function (f) { return String(f.id) === select.value; });
+          var intoTargets = into ? into.targets : {};
+          var stagings = Object.keys(Object.assign({}, from.targets, from.entries));
+          stagings.sort(function (a, b) { return (data.stagings[a] || '').localeCompare(data.stagings[b] || ''); });
+          var blocked = [];
+          rows.replaceChildren();
+          stagings.forEach(function (id) {
+            var here = from.targets[id] || 0;
+            var there = intoTargets[id] || 0;
+            var tr = document.createElement('tr');
+            var bad = here > 0 && there > 0;
+            if (bad) { blocked.push(data.stagings[id] || ('Staging #' + id)); tr.className = 'text-danger font-weight-bold'; }
+            tr.appendChild(cell(data.stagings[id] || ('Staging #' + id)));
+            tr.appendChild(cell(here === 0 ? 'none' : (bad ? here + ' (already ' + there + ' there)' : here + ' → ' + here), here === 0 ? 'text-muted' : ''));
+            var n = from.entries[id] || 0;
+            tr.appendChild(cell(n === 0 ? 'none' : n + ' moved', n === 0 ? 'text-muted' : ''));
+            rows.appendChild(tr);
+          });
+          clash.hidden = blocked.length === 0;
+          clash.textContent = blocked.length === 0 ? '' : '"' + (into ? into.name : '') + '" already has a required count at ' + blocked.join(', ') + '. Clear it on that fit\'s Edit page first, then move.';
+          submit.disabled = blocked.length > 0 || !into;
+        }
+
+        $(modal).on('show.bs.modal', function (e) {
+          var button = e.relatedTarget;
+          fromId = button.dataset.cpMove;
+          from = data.from[fromId];
+          form.action = button.dataset.action;
+          document.getElementById('cp-move-title').textContent = 'Move counts and stock of "' + from.name + '"';
+          document.getElementById('cp-move-note').textContent = '"' + from.name + '" stays in the list with no counts; delete it from its Edit page when you no longer need it.';
+          var choices = data.fits.filter(function (f) { return String(f.id) !== String(fromId); });
+          choices.sort(function (a, b) { return ((b.ship === from.ship) - (a.ship === from.ship)) || a.label.localeCompare(b.label); });
+          select.replaceChildren();
+          choices.forEach(function (f) {
+            var o = document.createElement('option');
+            o.value = f.id;
+            o.textContent = f.label;
+            select.appendChild(o);
+          });
+          submit.disabled = false;
+          submit.textContent = 'Move';
+          render();
+        });
+        $(modal).on('shown.bs.modal', function () { select.focus(); });
+        select.addEventListener('change', render);
+        form.addEventListener('submit', function () { submit.disabled = true; submit.textContent = 'Moving…'; });
+      })();
+    </script>
+  @endpush
+@endif
 
 @if($doctrineSite !== null)
   @push('javascript')
