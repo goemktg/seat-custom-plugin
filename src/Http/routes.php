@@ -40,6 +40,10 @@ Route::group([
                 'as' => 'custom-plugin.settings.update',
                 'uses' => 'SettingsController@update'
             ]);
+            Route::post('/settings/doctrine-sync', [
+                'as' => 'custom-plugin.settings.doctrine-sync',
+                'uses' => 'SettingsController@updateDoctrineSync'
+            ]);
         });
     });
 
@@ -75,6 +79,15 @@ Route::group([
             Route::get('/stock/{staging}/{fit}', 'StockController@show')->whereNumber(['staging', 'fit'])->name('custom-plugin.stock.show');
             Route::post('/stock/{staging}/{fit}', 'StockController@store')->whereNumber(['staging', 'fit'])->name('custom-plugin.stock.store');
             Route::delete('/stock/entries/{entry}', 'StockController@destroy')->whereNumber('entry')->name('custom-plugin.stock.destroy');
+
+            // Doctrines followed from the doctrine site; each of these but history asks the site
+            Route::get('/import/history', 'DoctrineImportController@history')->name('custom-plugin.fits.import.history');
+            Route::group(['middleware' => 'throttle:20,1'], function (): void {
+                Route::get('/import/choose', 'DoctrineImportController@choose')->name('custom-plugin.fits.import.choose');
+                Route::get('/import/review', 'DoctrineImportController@review')->name('custom-plugin.fits.import.review');
+                Route::post('/import', 'DoctrineImportController@store')->name('custom-plugin.fits.import.store');
+                Route::post('/import/sync', 'DoctrineImportController@syncNow')->name('custom-plugin.fits.import.sync');
+            });
         });
     });
 

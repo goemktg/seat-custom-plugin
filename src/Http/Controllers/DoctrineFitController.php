@@ -7,8 +7,12 @@ use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineStaging;
 use Goemktg\Seat\SeatCustomPlugin\Models\StockEntry;
 use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
 use Goemktg\Seat\SeatCustomPlugin\Services\FitInput;
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
 use Goemktg\Seat\SeatCustomPlugin\Services\Locations;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\FitLock;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SourceStatus;
 use Goemktg\Seat\SeatCustomPlugin\Support\DuplicateFit;
+use Illuminate\Support\Carbon;
 use Goemktg\Seat\SeatCustomPlugin\Support\LastCorporation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -38,7 +42,7 @@ class DoctrineFitController extends Controller
         ]);
     }
 
-    public function index(CorporationInfo $corporation, Locations $locations, CorporationAccess $access)
+    public function index(CorporationInfo $corporation, Locations $locations, CorporationAccess $access, DoctrineSync $sync)
     {
         Cookie::queue(LastCorporation::COOKIE, (string) $corporation->corporation_id, LastCorporation::MINUTES);
         $stagings = DoctrineStaging::where('corporation_id', $corporation->corporation_id)->orderBy('name')->get();
@@ -62,7 +66,38 @@ class DoctrineFitController extends Controller
             'users' => $users,
             'availableLocations' => $available,
             'hulls' => DB::table('invTypes')->whereIn('typeID', $fits->pluck('ship_type_id'))->pluck('typeName', 'typeID'),
+            'doctrineSite' => $this->doctrineSite($corporation, $sync),
         ]);
+    }
+
+    /**
+     * The status card's data, or null when the import is off for the corporation.
+     * Reads only this database; the doctrine site is asked when the import window opens.
+     *
+     * @return array{sources: list<array<string, mixed>>, recent: \Illuminate\Support\Collection}|null
+     */
+    private function doctrineSite(CorporationInfo $corporation, DoctrineSync $sync): ?array
+    {
+        if (! $sync->enabledFor($corporation->corporation_id)) {
+            return null;
+        }
+        $sources = DB::table(DoctrineSync::SOURCES)->where('corporation_id', $corporation->corporation_id)
+            ->where('following', true)->orderBy('name')->get()
+            ->map(static fn ($s) => [
+                'name' => (string) $s->name,
+                'status' => $s->upstream_status,
+                'version' => $s->upstream_version,
+                'checkedAt' => $s->last_checked_at === null ? null : Carbon::parse($s->last_checked_at),
+                'error' => $s->last_error,
+                'state' => SourceStatus::of($s->last_checked_at, $s->last_error, $s->last_report),
+                'problems' => SourceStatus::problems($s->last_report),
+            ])->all();
+
+        return [
+            'sources' => $sources,
+            'recent' => DB::table(DoctrineSync::EVENTS)->where('corporation_id', $corporation->corporation_id)
+                ->orderByDesc('created_at')->orderByDesc('id')->limit(3)->get(),
+        ];
     }
 
     public function create(CorporationInfo $corporation)
@@ -95,6 +130,11 @@ class DoctrineFitController extends Controller
     public function update(Request $request, CorporationInfo $corporation, int $fit, FitInput $input)
     {
         $model = $this->findFit($corporation, $fit);
+        if (FitLock::locked($model->source_id, $model->sync_state)) {
+            // the doctrine site owns these; whatever the form sent, keep them.
+            // The version check below still refuses a save if a sync changed them meanwhile.
+            $request->merge(FitLock::enforce($request->all(), $model->only(FitLock::FIELDS)));
+        }
         $valid = $input->validate($request, $corporation->corporation_id, $this->stagingIds($corporation), $model);
 
         self::guardDuplicate(fn () => DB::transaction(function () use ($model, $valid, $request) {
@@ -112,6 +152,10 @@ class DoctrineFitController extends Controller
     public function destroy(CorporationInfo $corporation, int $fit)
     {
         $model = $this->findFit($corporation, $fit);
+        if (FitLock::locked($model->source_id, $model->sync_state)) {
+            // the next sync would only add it again
+            return back()->withErrors(['fit' => sprintf('"%s" comes from the doctrine site. Remove it there; once it is gone from the site you can delete it here.', $model->fit_name)]);
+        }
         $model->delete();
 
         return redirect()->route('custom-plugin.fits.index', $corporation->corporation_id)
@@ -168,6 +212,9 @@ class DoctrineFitController extends Controller
             'stagings' => $stagings,
             'targets' => $fit?->targets() ?? [],
             'bayFields' => FitInput::BAY_FIELDS,
+            'locked' => $fit !== null && FitLock::locked($fit->source_id, $fit->sync_state),
+            'source' => $fit?->source_id === null ? null
+                : DB::table(DoctrineSync::SOURCES)->where('id', $fit->source_id)->first(['name', 'upstream_version']),
         ]);
     }
 

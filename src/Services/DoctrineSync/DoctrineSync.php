@@ -7,6 +7,8 @@ namespace Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\FitCompiler;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineFit;
 use Goemktg\Seat\SeatCustomPlugin\Services\SdeTypes;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\ImportInput;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SourceStatus;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncPlanner;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\UpstreamDoctrine;
@@ -42,9 +44,7 @@ class DoctrineSync
     /** @return list<int> */
     public static function corporations(): array
     {
-        $ids = json_decode((string) setting(self::SETTING, true), true);
-
-        return is_array($ids) ? array_values(array_unique(array_map('intval', array_filter($ids, 'is_numeric')))) : [];
+        return ImportInput::corporationIds(json_decode((string) setting(self::SETTING, true), true));
     }
 
     public function enabledFor(int $corporationId): bool
@@ -235,6 +235,11 @@ class DoctrineSync
             if ($action->kind === SyncAction::UNCHANGED) {
                 continue;
             }
+            // a fit still held or unreadable for the same reason is not news every hour
+            if (($action->kind === SyncAction::HELD || $action->kind === SyncAction::FAILED)
+                && SourceStatus::alreadyReported($source?->last_report, $action->kind, $action->label, $action->detail)) {
+                continue;
+            }
             $events[] = [
                 'run_id' => $runId, 'corporation_id' => $corporationId, 'source_id' => $sourceId,
                 'fit_id' => $action->fitId, 'kind' => $action->kind,
@@ -289,11 +294,12 @@ class DoctrineSync
                     case SyncAction::RETURNED:
                     case SyncAction::LINK:
                         $row = DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->lockForUpdate()->firstOrFail();
-                        $row->fill($linkedValues() + ($userId === null ? [] : ['updated_by' => $userId]))->save();
+                        // the last edit is this sync's: its user, or nobody for the hourly sync
+                        $row->fill($linkedValues() + ['updated_by' => $userId])->save();
                         break;
                     case SyncAction::MISSING:
                         DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)
-                            ->update(['sync_state' => 'missing', 'source_missing_at' => $now]);
+                            ->update(['sync_state' => 'missing', 'source_missing_at' => $now, 'updated_by' => $userId]);
                         break;
                     case SyncAction::UNCHANGED:
                         // follows a doctrine renamed upstream

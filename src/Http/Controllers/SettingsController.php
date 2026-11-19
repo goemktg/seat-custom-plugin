@@ -22,7 +22,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 namespace Goemktg\Seat\SeatCustomPlugin\Http\Controllers;
 
 
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSyncException;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\ImportInput;
 use Illuminate\Http\Request;
+use Seat\Eveapi\Models\Corporation\CorporationInfo;
 use Seat\Web\Http\Controllers\Controller;
 use Seat\Web\Models\Acl\Role;
 use Seat\Web\Models\Squads\Squad;
@@ -37,9 +41,48 @@ class SettingsController extends Controller
     /**
      * @return \Illuminate\View\View
      */
-    public function index()
+    public function index(DoctrineSync $sync)
     {
-        return view('custom-plugin::settings');
+        $configured = $sync->client()->configured();
+        $site = null;
+        if ($configured) {
+            try {
+                $site = ['count' => count($sync->client()->doctrines()), 'error' => null];
+            } catch (DoctrineSyncException $e) {
+                $site = ['count' => null, 'error' => $e->getMessage()];
+            }
+        }
+
+        return view('custom-plugin::settings', [
+            'doctrineSync' => [
+                'configured' => $configured,
+                'site' => $site,
+                'corporations' => CorporationInfo::whereIn('corporation_id', DoctrineSync::corporations())
+                    ->orderBy('name')->pluck('name', 'corporation_id'),
+            ],
+        ]);
+    }
+
+    /** Which corporations may import from the doctrine site. */
+    public function updateDoctrineSync(Request $request)
+    {
+        $request->validate([
+            'doctrine-sync-corporations' => ['nullable', 'array', 'max:500'],
+        ]);
+        $ids = ImportInput::corporationIds($request->input('doctrine-sync-corporations', []));
+        $known = CorporationInfo::whereIn('corporation_id', $ids)->pluck('corporation_id')->map(static fn ($id) => (int) $id)->all();
+        $unknown = array_diff($ids, $known);
+        if ($unknown !== []) {
+            return redirect()->back()
+                ->withErrors(['doctrine-sync-corporations' => 'SeAT does not know these corporations: ' . implode(', ', $unknown) . '.']);
+        }
+        sort($known);
+
+        setting([DoctrineSync::SETTING, json_encode($known)], true);
+
+        return redirect()->back()->with('success', $known === []
+            ? 'Doctrine site sync is off for every corporation. Imported fits stay.'
+            : sprintf('Doctrine site sync is on for %d %s.', count($known), count($known) === 1 ? 'corporation' : 'corporations'));
     }
 
     /**

@@ -73,7 +73,7 @@ final class SyncPlanner
                 } else {
                     $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'],
                         $existing['sourceId'] === null
-                            ? 'A fit added by hand has this name on this hull.'
+                            ? SyncAction::HAND_FIT
                             : 'A fit from another followed doctrine has this name on this hull.');
                 }
                 continue;

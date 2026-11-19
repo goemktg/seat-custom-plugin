@@ -19,6 +19,9 @@ final class SyncAction
     /** Kinds that write a fit. */
     public const WRITES = [self::ADD, self::UPDATE, self::LINK, self::RETURNED];
 
+    /** Why a fit is held when a hand-made fit has its name; the import window offers to link it. */
+    public const HAND_FIT = 'A fit added by hand has this name on this hull.';
+
     public function __construct(
         public readonly string $kind,
         public readonly string $label,
@@ -32,5 +35,11 @@ final class SyncAction
     public function writes(): bool
     {
         return in_array($this->kind, self::WRITES, true);
+    }
+
+    /** A held hand-made fit the user may hand over to the doctrine. */
+    public function linkable(): bool
+    {
+        return $this->kind === self::HELD && $this->fitId !== null && $this->detail === self::HAND_FIT;
     }
 }
