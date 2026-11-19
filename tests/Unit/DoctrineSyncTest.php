@@ -335,6 +335,28 @@ final class DoctrineSyncTest extends TestCase
         $this->assertSame([42, null, null, null, null, null, null], array_map(static fn (UpstreamFit $f) => $f->shared, $doctrine->fits));
     }
 
+    public function testReadsTheReorganisedDoctrineSiteAnswerWhereEveryFitIsShared(): void
+    {
+        $scimi = "[Scimitar, Scimi Logi]\nDamage Control II\n";
+        $doctrine = UpstreamDoctrine::fromResponse([
+            'doctrine' => ['slug' => 'rail-ferox', 'name' => 'Rail Ferox Fleet', 'status' => 'active', 'roles' => [
+                ['role' => 1, 'name' => 'DPS', 'fits' => [
+                    ['eft' => self::FEROX, 'ship' => 'Ferox', 'name' => 'Rail Ferox', 'shared' => 7, 'sharedV' => 2, 'note' => 'n', 'doctrineNote' => ''],
+                ]],
+                ['role' => 4, 'name' => 'Logi', 'fits' => [
+                    ['eft' => $scimi, 'ship' => 'Scimitar', 'name' => 'Scimi Logi', 'shared' => 12, 'sharedV' => 1, 'note' => '', 'doctrineNote' => 'Anchor up'],
+                ]],
+            ]],
+            'version' => 9,
+            'updatedAt' => 1,
+        ]);
+
+        $this->assertSame([7, 12], array_map(static fn (UpstreamFit $f) => $f->shared, $doctrine->fits));
+        $this->assertSame([UpstreamFit::normalize(self::FEROX), UpstreamFit::normalize($scimi)], array_map(static fn (UpstreamFit $f) => $f->eft, $doctrine->fits),
+            'notes stay outside the EFT, so every copy of a fit hashes the same');
+        $this->assertSame([], $doctrine->unreadable);
+    }
+
     /** @return array{0: UpstreamDoctrine, 1: callable} */
     private static function sharedCopy(array $row, ?int $shared = 42): array
     {
