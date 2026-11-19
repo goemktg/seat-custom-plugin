@@ -221,7 +221,8 @@
               <select class="form-control" id="cp-move-to" name="to" aria-describedby="cp-move-hint"></select>
               <small class="form-text text-muted" id="cp-move-hint">Fits on the same hull are listed first.</small>
             </div>
-            <div aria-live="polite">
+            <div>
+              {{-- only the refusal is announced; the table is read when the user moves into it --}}
               <div class="alert alert-danger py-2" id="cp-move-clash" role="alert" hidden></div>
               <div class="table-responsive">
                 <table class="table table-sm mb-2">
