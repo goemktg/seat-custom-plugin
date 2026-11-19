@@ -2,6 +2,8 @@
 
 namespace Goemktg\Seat\SeatCustomPlugin\Models;
 
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\FitLock;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -31,12 +33,17 @@ class DoctrineFit extends Model
     protected $fillable = [
         'corporation_id', 'doctrine', 'fit_name', 'ship_type_id', 'eft',
         'bays', 'container', 'sort_order', 'created_by', 'updated_by',
+        // set only by DoctrineSync; the fit form never sends them
+        'source_id', 'sync_state', 'source_missing_at', 'source_eft_hash', 'source_synced_at',
     ];
 
     protected $casts = [
         'corporation_id' => 'integer',
         'ship_type_id' => 'integer',
         'sort_order' => 'integer',
+        'source_id' => 'integer',
+        'source_missing_at' => 'datetime',
+        'source_synced_at' => 'datetime',
         'bays' => 'array',
         'container' => 'array',
     ];
@@ -51,6 +58,13 @@ class DoctrineFit extends Model
             $this->updated_at?->getTimestamp(), $this->doctrine, $this->fit_name, $this->eft,
             $this->bays, $this->container, $this->sort_order, $this->targets(),
         ]));
+    }
+
+    /** Whether the doctrine site owns this fit's doctrine, name and EFT right now (see FitLock). */
+    public function siteLocked(): bool
+    {
+        return FitLock::locked($this->source_id, $this->sync_state,
+            $this->source_id !== null && app(DoctrineSync::class)->enabledFor((int) $this->corporation_id));
     }
 
     /**

@@ -21,8 +21,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 namespace Goemktg\Seat\SeatCustomPlugin;
 
+use Goemktg\Seat\SeatCustomPlugin\Commands\SyncFollowedDoctrines;
 use Goemktg\Seat\SeatCustomPlugin\Commands\SyncSquadsWithRoles;
 use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineClient;
 use Illuminate\Support\Facades\Gate;
 use Seat\Services\AbstractSeatPlugin;
 
@@ -65,6 +67,8 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
     {
         // $this->mergeConfigFrom(__DIR__ . '/Config/mumble.config.php', 'mumble.config');
         $this->mergeConfigFrom(__DIR__ . '/Config/custom-plugin.locale.php', 'custom-plugin.locale');
+        $this->mergeConfigFrom(__DIR__ . '/Config/custom-plugin.doctrine-sync.php', 'custom-plugin.doctrine-sync');
+        $this->app->bind(DoctrineClient::class, static fn () => DoctrineClient::fromConfig());
 
         // Overload sidebar with your package menu entries
         $this->mergeConfigFrom(__DIR__ . '/Config/package.sidebar.php', 'package.sidebar');
@@ -80,6 +84,7 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
     {
         $this->commands([
             SyncSquadsWithRoles::class,
+            SyncFollowedDoctrines::class,
         ]);
     }
 

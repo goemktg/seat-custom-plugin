@@ -23,6 +23,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 return [
     'main_level'    => 'Custom Plugin',
     'settings'      => 'Settings',
+    'inventory'     => 'Inventory',
     'hangar_check'  => 'Hangar Check',
     'doctrine_fits' => 'Doctrine Fits',
 ];

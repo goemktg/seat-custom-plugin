@@ -10,6 +10,7 @@ use Goemktg\Seat\SeatCustomPlugin\Conformance\FitName;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\HangarReport;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\QuantityLines;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineFit;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\FitLock;
 use Goemktg\Seat\SeatCustomPlugin\Support\DuplicateFit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -59,6 +60,13 @@ class FitInput
 
         if ($existing !== null) {
             self::assertCurrent($existing, $data['version'] ?? null);
+        }
+        // A synced fit's doctrine, name and EFT belong to the doctrine site: the stored
+        // values are kept and not checked again, so newer item data never blocks saving
+        // the fields that are the corporation's own.
+        $siteOwned = $existing !== null && $existing->siteLocked();
+        if ($siteOwned) {
+            $data = FitLock::enforce($data, $existing->only(FitLock::FIELDS));
         }
 
         $errors = [];
@@ -129,6 +137,12 @@ class FitInput
             }
         }
 
+        if ($siteOwned) {
+            unset($errors['eft'], $errors['doctrine'], $errors['fit_name']);
+            $doctrine = (string) $existing->doctrine;
+            $fitName = (string) $existing->fit_name;
+            $hull = ['id' => (int) $existing->ship_type_id];
+        }
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
         }

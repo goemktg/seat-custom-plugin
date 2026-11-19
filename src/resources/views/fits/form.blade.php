@@ -20,22 +20,34 @@
       <div class="col-lg-7">
         <div class="card">
           <div class="card-body">
+            @if($locked)
+              <div class="alert alert-info" id="cp-locked-note">
+                <i class="fas fa-lock mr-1" aria-hidden="true"></i>
+                Synced from the doctrine site ({{ $source?->name }}@if($source?->upstream_version) v{{ $source->upstream_version }}@endif, {{ $fit->source_synced_at?->diffForHumans() }}).
+                Doctrine, fit name and EFT follow the site; change them there. Holds, required ships and sort order are yours to set here.
+              </div>
+            @elseif($fit?->source_id !== null && $fit?->sync_state === 'missing')
+              <div class="alert alert-warning">
+                This fit is no longer on the doctrine site, so it is not updated any more. Edit or delete it like a fit added by hand.
+              </div>
+            @endif
             <div class="form-row">
               <div class="form-group col-sm-6">
                 <label for="cp-doctrine">Doctrine</label>
-                <input type="text" id="cp-doctrine" name="doctrine" maxlength="100" required
+                <input type="text" id="cp-doctrine" name="doctrine" maxlength="100" required @readonly($locked)
+                       @if($locked) aria-describedby="cp-locked-note" @endif
                        class="form-control @error('doctrine') is-invalid @enderror"
                        value="{{ old('doctrine', $fit?->doctrine) }}">
                 @error('doctrine')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
               <div class="form-group col-sm-6">
                 <label for="cp-fit-name">Fit name</label>
-                <input type="text" id="cp-fit-name" name="fit_name" maxlength="100"
+                <input type="text" id="cp-fit-name" name="fit_name" maxlength="100" @readonly($locked)
                        class="form-control @error('fit_name') is-invalid @enderror"
                        value="{{ old('fit_name', $fit?->fit_name) }}" aria-describedby="cp-fit-name-help">
                 <small id="cp-fit-name-help" class="form-text text-muted">
                   Hangar Check compares a ship with this fit only when the ship's in-game name is exactly this, case included.
-                  Leave empty to use the name from the EFT's first line.
+                  @unless($locked)Leave empty to use the name from the EFT's first line.@endunless
                 </small>
                 @error('fit_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
@@ -43,7 +55,8 @@
 
             <div class="form-group mb-0">
               <label for="cp-eft">EFT</label>
-              <textarea id="cp-eft" name="eft" rows="18" required spellcheck="false"
+              <textarea id="cp-eft" name="eft" rows="18" required spellcheck="false" @readonly($locked)
+                        @if($locked) aria-describedby="cp-locked-note" @endif
                         class="form-control text-monospace @error('eft') is-invalid @enderror" style="font-size: .8125rem"
                         placeholder="[Zirnitra, Zirni II]&#10;Damage Control II&#10;...">{{ old('eft', $fit?->eft) }}</textarea>
               @error('eft')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -114,7 +127,9 @@
   <div class="d-flex flex-wrap align-items-center mb-4">
     <button type="submit" form="cp-fit-form" class="btn btn-primary mr-2">Save fit</button>
     <a href="{{ route('custom-plugin.fits.index', $corporation->corporation_id) }}" class="btn btn-default">Cancel</a>
-    @if($fit)
+    @if($locked)
+      <span class="ml-auto small text-muted">To remove this fit, remove it on the doctrine site.</span>
+    @elseif($fit)
       <form method="post" class="ml-auto" action="{{ route('custom-plugin.fits.destroy', [$corporation->corporation_id, $fit->id]) }}"
             data-confirm="Delete {{ $fit->fit_name }}? This cannot be undone." onsubmit="return confirm(this.dataset.confirm)">
         @csrf
