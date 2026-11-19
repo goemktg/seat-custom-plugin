@@ -57,6 +57,12 @@ final class MatchResult
         return count($this->extra);
     }
 
+    /** Differences already accepted (refits, fitted items carried in cargo): shown folded, nothing to do. */
+    public function acceptedCount(): int
+    {
+        return count($this->refits) + count($this->stowed);
+    }
+
     /** @param list<array{count: int}> $lines */
     private static function total(array $lines): int
     {
