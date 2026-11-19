@@ -336,10 +336,11 @@ class DoctrineSync
                     // the plan came from a plain read; a user may have edited the fit since
                     $row = DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->lockForUpdate()
                         ->first(['id', 'source_id', 'sync_state', 'eft', 'source_eft_hash', 'source_shared_id', 'ship_type_id', 'fit_name', 'doctrine']);
-                    // Whether the doctrine keeping a shared fit is still followed. A plain read, not a
-                    // lock: that doctrine's own sync locks its source row before its fits, so locking it
-                    // here, after the fit, could deadlock. Following it again in between leaves the fit
-                    // with this doctrine, which then keeps it; the other one reports it as shared.
+                    // Whether the doctrine keeping a shared fit is still followed. A plain read, so inside
+                    // this run's transaction it sees what the plan saw, not a newer value; not a lock, as
+                    // that doctrine's own sync locks its source row before its fits and locking it here,
+                    // after the fit, could deadlock. A doctrine followed again meanwhile simply finds the
+                    // fit kept by this one and reports it as shared, so either way one doctrine keeps it.
                     $ownerFollowing = $action->kind !== SyncAction::TAKE_OVER || $row?->source_id === null ? null
                         : (bool) DB::table(self::SOURCES)->where('id', $row->source_id)->value('following');
                     if ($row === null || ! SyncPlanner::stillValid($action, [
@@ -388,7 +389,9 @@ class DoctrineSync
             }
 
             return new SyncAction(SyncAction::HELD, $action->label, $fit, $action->shipTypeId, $action->fitId,
-                'Another fit already has this name in this doctrine or on this hull.');
+                $action->kind === SyncAction::TAKE_OVER
+                    ? 'This doctrine already has another fit with this name, so the shared fit cannot move to it.'
+                    : 'Another fit already has this name in this doctrine or on this hull.');
         } catch (\UnexpectedValueException $e) {
             if ($e->getMessage() !== self::CHANGED_MEANWHILE) {
                 throw $e;

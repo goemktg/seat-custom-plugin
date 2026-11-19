@@ -88,7 +88,7 @@ final class SyncPlanner
             if ($existing['sourceId'] === null || $existing['sourceId'] !== $sourceId) {
                 if ($existing['sourceId'] === null && in_array($existing['id'], $linkIds, true)) {
                     $actions[] = new SyncAction(SyncAction::LINK, $fit->label(), $fit, $shipTypeId, $existing['id']);
-                } elseif ($existing['sourceId'] !== null && $fit->shared !== null && ($existing['sharedId'] ?? null) === $fit->shared) {
+                } elseif ($existing['sourceId'] !== null && self::sameSharedFit($fit, $existing['sharedId'] ?? null, $existing['eftHash'])) {
                     $actions[] = self::sharedCopy($fit, $shipTypeId, $existing);
                 } else {
                     $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'],
@@ -144,6 +144,22 @@ final class SyncPlanner
             $following
                 ? sprintf('Taken over from %s, which no longer has this fit.', $owner)
                 : sprintf('Taken over from %s, which is no longer followed.', $owner));
+    }
+
+    /**
+     * Whether a linked row is a copy of the upstream fit's shared fit. A row synced
+     * before shared ids were kept has none; it counts as the same fit when it was
+     * last given exactly this EFT, as the doctrine site's copies all are.
+     */
+    private static function sameSharedFit(UpstreamFit $fit, mixed $sharedId, ?string $eftHash): bool
+    {
+        if ($fit->shared === null) {
+            return false;
+        }
+
+        return $sharedId === null
+            ? $eftHash !== null && $eftHash === UpstreamFit::hash($fit->eft)
+            : (int) $sharedId === $fit->shared;
     }
 
     /** @param array{eft: string, eftHash: ?string} $existing */
@@ -203,8 +219,7 @@ final class SyncPlanner
             SyncAction::MISSING => $sourceOf === $sourceId && $row['sync_state'] === null,
             SyncAction::UNCHANGED => $sourceOf === $sourceId,
             SyncAction::TAKE_OVER => $sourceOf !== null && $sourceOf !== $sourceId && $sameHull && $notEditedHere
-                && $action->fit?->shared !== null
-                && ($row['source_shared_id'] ?? null) !== null && (int) $row['source_shared_id'] === $action->fit->shared
+                && $action->fit !== null && self::sameSharedFit($action->fit, $row['source_shared_id'] ?? null, $row['source_eft_hash'])
                 && ($row['sync_state'] === 'missing' || ($row['owner_following'] ?? true) === false),
             default => true,
         };

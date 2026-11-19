@@ -369,12 +369,23 @@ final class DoctrineSyncTest extends TestCase
         [$other] = self::sharedCopy([]);
         [, $find] = self::sharedCopy(['sharedId' => 41]);
         [$plain, $findPlain] = self::sharedCopy([], null);
-        [$copy, $unmarked] = self::sharedCopy(['sharedId' => null]);
+        $older = str_replace('250mm Railgun II', '200mm Railgun II', self::FEROX);
+        [$copy, $unmarkedOther] = self::sharedCopy(['sharedId' => null, 'eft' => $older, 'eftHash' => UpstreamFit::hash($older)]);
 
         $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($other, self::SOURCE, [], self::resolver(), $find), 'kind'));
         $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($plain, self::SOURCE, [], self::resolver(), $findPlain), 'kind'));
-        $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($copy, self::SOURCE, [], self::resolver(), $unmarked), 'kind'),
-            'a row synced before shared ids were kept waits for its own doctrine to mark it');
+        $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($copy, self::SOURCE, [], self::resolver(), $unmarkedOther), 'kind'),
+            'a row without a shared id and with another EFT may be another fit');
+    }
+
+    public function testARowSyncedBeforeSharedIdsWereKeptIsTheSameFitWhenItHasTheSameEft(): void
+    {
+        [$doctrine, $unmarked] = self::sharedCopy(['sharedId' => null]);
+        [, $unmarkedGone] = self::sharedCopy(['sharedId' => null, 'ownerFollowing' => false]);
+
+        $this->assertSame([SyncAction::SHARED], array_column(SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $unmarked), 'kind'));
+        $this->assertSame([SyncAction::TAKE_OVER], array_column(SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $unmarkedGone), 'kind'),
+            'its doctrine is no longer followed, so nothing else would ever mark it');
     }
 
     public function testASharedFitIsTakenOverWhenItsDoctrineIsNoLongerFollowedOrNoLongerHasIt(): void
@@ -417,6 +428,8 @@ final class DoctrineSyncTest extends TestCase
         $this->assertFalse(SyncPlanner::stillValid($take, ['source_id' => self::SOURCE] + $row, self::SOURCE), 'already ours');
         $this->assertFalse(SyncPlanner::stillValid($take, ['source_id' => null] + $row, self::SOURCE), 'became a hand-made fit');
         $this->assertFalse(SyncPlanner::stillValid($take, ['source_shared_id' => 41] + $row, self::SOURCE));
+        $this->assertTrue(SyncPlanner::stillValid($take, ['source_shared_id' => null] + $row, self::SOURCE), 'unmarked, same EFT');
+        $this->assertFalse(SyncPlanner::stillValid($take, ['source_shared_id' => null, 'source_eft_hash' => null, 'eft' => 'x'] + $row, self::SOURCE));
         $this->assertFalse(SyncPlanner::stillValid($take, ['eft' => 'edited here'] + $row, self::SOURCE));
         $this->assertFalse(SyncPlanner::stillValid($take, ['ship_type_id' => 1] + $row, self::SOURCE));
     }

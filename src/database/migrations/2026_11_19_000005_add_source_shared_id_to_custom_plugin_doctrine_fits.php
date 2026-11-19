@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Schema;
  * that another followed doctrine brings in is recognised as the same fit.
  *
  * Meaningful only while source_id is set. Existing rows get theirs on their
- * doctrine's next sync; the doctrine site's data is not kept here to fill it now.
+ * doctrine's next sync (the doctrine site's data is not kept here to fill it
+ * now); until then a row with exactly the shared fit's EFT counts as a copy.
  */
 return new class extends Migration
 {
