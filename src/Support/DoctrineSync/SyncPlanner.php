@@ -8,9 +8,10 @@ namespace Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync;
  * Decides, fit by fit, what following an upstream doctrine means for the
  * corporation's fits. Reads nothing and writes nothing itself.
  *
- * A linked fit is the one of this source with the upstream fit's hull and
- * name. Upstream fits carry no id, so a renamed fit is a missing one plus a
- * new one.
+ * A linked fit is the one of this source with the upstream fit's shared id
+ * and hull, else with its hull and name. A fit renamed upstream keeps its
+ * shared id, so its row (required counts, stock ledger) carries on under the
+ * new name; without a shared id a renamed fit is a missing one plus a new one.
  *
  * A shared fit of the doctrine site can sit in several followed doctrines, but
  * the corporation keeps one row per hull and name. The doctrine that brought it
@@ -26,8 +27,9 @@ final class SyncPlanner
      * @param  int|null  $sourceId  the followed doctrine's row, null before it is first followed
      * @param  list<array{id: int, label: string, missing: bool}>  $linked  every fit of this source
      * @param  callable(UpstreamFit): array{shipTypeId: ?int, unresolved: list<string>}  $resolve  against SeAT's item data
-     * @param  callable(int, string, string): ?array{id: int, sourceId: ?int, eft: string, eftHash: ?string, missing: bool, sameHull: bool, sharedId: ?int, ownerFollowing: bool, ownerName: string}  $find
-     *         the corporation's fit that the unique keys would pair with (hull, fit name, doctrine name), as the database compares names;
+     * @param  callable(int, string, string, ?int): ?array{id: int, sourceId: ?int, eft: string, eftHash: ?string, missing: bool, sameHull: bool, sharedId: ?int, ownerFollowing: bool, ownerName: string, fitName?: string}  $find
+     *         this doctrine's fit with the shared id and hull, else the corporation's fit that the unique keys would pair with
+     *         (hull, fit name, doctrine name), as the database compares names;
      *         sharedId, ownerFollowing and ownerName describe the followed doctrine it came from
      * @param  list<int>  $linkIds  manual fits the user chose to hand over to this doctrine
      * @return list<SyncAction>
@@ -55,7 +57,7 @@ final class SyncPlanner
             }
             if ($resolved['unresolved'] !== []) {
                 // e.g. items newer than SeAT's item data: keep the linked copy as it is, still locked
-                $existing = $find($shipTypeId, $fit->fitName, $doctrine->name);
+                $existing = $find($shipTypeId, $fit->fitName, $doctrine->name, $fit->shared);
                 if ($existing !== null) {
                     $claimed[$existing['id']] = true;
                 }
@@ -64,7 +66,7 @@ final class SyncPlanner
                 continue;
             }
 
-            $existing = $find($shipTypeId, $fit->fitName, $doctrine->name);
+            $existing = $find($shipTypeId, $fit->fitName, $doctrine->name, $fit->shared);
             $key = $existing !== null ? 'id:' . $existing['id'] : $shipTypeId . ':' . mb_strtolower($fit->fitName);
             if (isset($seen[$key]) || isset($seen[':' . mb_strtolower($fit->fitName)])) {
                 $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId,
@@ -104,12 +106,14 @@ final class SyncPlanner
                 $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'], self::EDITED_HERE);
                 continue;
             }
+            $renamed = isset($existing['fitName']) && mb_strtolower($existing['fitName']) !== mb_strtolower($fit->fitName)
+                ? sprintf('Renamed from "%s".', $existing['fitName']) : null;
             if ($existing['missing']) {
-                $actions[] = new SyncAction(SyncAction::RETURNED, $fit->label(), $fit, $shipTypeId, $existing['id']);
-            } elseif ($existing['eftHash'] === $hash) {
+                $actions[] = new SyncAction(SyncAction::RETURNED, $fit->label(), $fit, $shipTypeId, $existing['id'], $renamed);
+            } elseif ($existing['eftHash'] === $hash && $renamed === null) {
                 $actions[] = new SyncAction(SyncAction::UNCHANGED, $fit->label(), $fit, $shipTypeId, $existing['id']);
             } else {
-                $actions[] = new SyncAction(SyncAction::UPDATE, $fit->label(), $fit, $shipTypeId, $existing['id']);
+                $actions[] = new SyncAction(SyncAction::UPDATE, $fit->label(), $fit, $shipTypeId, $existing['id'], $renamed);
             }
         }
 

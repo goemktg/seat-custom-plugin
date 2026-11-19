@@ -357,6 +357,25 @@ final class DoctrineSyncTest extends TestCase
         $this->assertSame([], $doctrine->unreadable);
     }
 
+    public function testAFitRenamedUpstreamKeepsItsRowWhenItsSharedIdAndHullStay(): void
+    {
+        $renamed = str_replace('Rail Ferox', 'Rail Ferox v2', self::FEROX);
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => $renamed, 'shared' => 42]]));
+        $old = ['id' => 5, 'sourceId' => self::SOURCE, 'sharedId' => 42, 'fitName' => 'Rail Ferox', 'eftHash' => UpstreamFit::hash(self::FEROX)];
+        $find = static function (int $ship, string $name, string $doctrine, ?int $shared) use ($old): ?array {
+            return $shared === 42 && $ship === 16227
+                ? $old + ['eft' => self::FEROX, 'missing' => false, 'sameHull' => true, 'ownerFollowing' => true, 'ownerName' => 'Rail Ferox Fleet']
+                : null;
+        };
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [['id' => 5, 'label' => 'Rail Ferox (Ferox)', 'missing' => false]], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::UPDATE], array_column($actions, 'kind'), 'one row renamed, not a missing one plus a new one');
+        $this->assertSame(5, $actions[0]->fitId);
+        $this->assertStringContainsString('Renamed from "Rail Ferox"', (string) $actions[0]->detail);
+        $this->assertSame(['fit_name' => 'Rail Ferox v2'], SyncPlanner::renames(['fit_name' => 'Rail Ferox', 'doctrine' => 'Rail Ferox Fleet'], $doctrine->fits[0], 'Rail Ferox Fleet'));
+    }
+
     /** @return array{0: UpstreamDoctrine, 1: callable} */
     private static function sharedCopy(array $row, ?int $shared = 42): array
     {

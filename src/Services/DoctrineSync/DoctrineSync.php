@@ -220,8 +220,12 @@ class DoctrineSync
         // the doctrine a fit came from: whether it still holds the fit, for shared fits
         $sources = DB::table(self::SOURCES)->where('corporation_id', $corporationId)->get(['id', 'name', 'following'])->keyBy('id');
         // the database compares names, exactly as the two unique keys will
-        $find = function (int $shipTypeId, string $fitName, string $doctrineName) use ($corporationId, $sources): ?array {
-            $row = DoctrineFit::where('corporation_id', $corporationId)->where('ship_type_id', $shipTypeId)->where('fit_name', $fitName)->first()
+        $find = function (int $shipTypeId, string $fitName, string $doctrineName, ?int $shared) use ($corporationId, $sources, $sourceId): ?array {
+            // this doctrine's copy of the same fit, whatever its name now: a rename upstream keeps the row
+            $row = ($shared === null || $sourceId === null ? null
+                : DoctrineFit::where('corporation_id', $corporationId)->where('source_id', $sourceId)
+                    ->where('source_shared_id', $shared)->where('ship_type_id', $shipTypeId)->orderBy('id')->first())
+                ?? DoctrineFit::where('corporation_id', $corporationId)->where('ship_type_id', $shipTypeId)->where('fit_name', $fitName)->first()
                 ?? DoctrineFit::where('corporation_id', $corporationId)->where('doctrine', $doctrineName)->where('fit_name', $fitName)->first();
             if ($row === null) {
                 return null;
@@ -239,6 +243,7 @@ class DoctrineSync
                 'sharedId' => $row->source_id === null || $row->source_shared_id === null ? null : (int) $row->source_shared_id,
                 'ownerFollowing' => $owner !== null && (bool) $owner->following,
                 'ownerName' => $owner === null ? (string) $row->doctrine : (string) $owner->name,
+                'fitName' => (string) $row->fit_name,
             ];
         };
 
