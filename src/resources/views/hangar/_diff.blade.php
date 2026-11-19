@@ -29,19 +29,6 @@
       </dd>
     </div>
   @endforeach
-  @foreach([['Refit', $match->refits, 'Fitted, counts as the cargo refit:'], ['In cargo', $match->stowed, 'In cargo, counts as fitted:']] as [$label, $lines, $srLabel])
-    @if($lines !== [])
-      <div class="cp-strip-row cp-strip-quiet">
-        <dt>{{ $label }}</dt>
-        <dd>
-          <span class="sr-only">{{ $srLabel }}</span>
-          @foreach($lines as $line)
-            <span class="badge cp-chip badge-light">{{ $names[$line['typeId']] ?? ('Type #' . $line['typeId']) }}@if($line['count'] > 1) ×{{ number_format($line['count']) }}@endif</span>
-          @endforeach
-        </dd>
-      </div>
-    @endif
-  @endforeach
   @if($match->fit->unresolved !== [])
     <div class="cp-strip-row">
       <dt>Fit</dt>
@@ -49,3 +36,24 @@
     </div>
   @endif
 </dl>
+{{-- Already accepted, nothing to do: folded unless the officer asks to see them --}}
+@if($match->acceptedCount() > 0)
+  <details class="cp-accepted">
+    <summary>{{ $match->acceptedCount() }} accepted {{ $match->acceptedCount() === 1 ? 'difference' : 'differences' }}</summary>
+    <dl class="cp-strip mb-0 mt-1">
+      @foreach([['Refit', $match->refits, 'Fitted, counts as the cargo refit:'], ['In cargo', $match->stowed, 'In cargo, counts as fitted:']] as [$label, $lines, $srLabel])
+        @if($lines !== [])
+          <div class="cp-strip-row cp-strip-quiet">
+            <dt title="{{ rtrim($srLabel, ':') }}">{{ $label }}</dt>
+            <dd>
+              <span class="sr-only">{{ $srLabel }}</span>
+              @foreach($lines as $line)
+                <span class="badge cp-chip badge-light">{{ $names[$line['typeId']] ?? ('Type #' . $line['typeId']) }}@if($line['count'] > 1) ×{{ number_format($line['count']) }}@endif</span>
+              @endforeach
+            </dd>
+          </div>
+        @endif
+      @endforeach
+    </dl>
+  </details>
+@endif

@@ -181,6 +181,17 @@ final class DoctrineSyncTest extends TestCase
         $this->assertFalse(SyncPlanner::stillValid($gone, ['source_id' => null] + $row, self::SOURCE));
     }
 
+    public function test_a_name_changed_upstream_only_in_case_or_spacing_is_taken_exactly(): void
+    {
+        $fit = new UpstreamFit('[Leshak, Lesh A/M/A]', 'Leshak', 'Lesh A/M/A');
+        $row = ['fit_name' => 'Lesh A/M/A', 'doctrine' => 'Leshak RR'];
+
+        // the database matched these case-insensitively; Hangar Check pairs ships by the exact name
+        $this->assertSame([], SyncPlanner::renames($row, $fit, 'Leshak RR'));
+        $this->assertSame(['fit_name' => 'Lesh A/M/A'], SyncPlanner::renames(['fit_name' => 'lesh a/m/a'] + $row, $fit, 'Leshak RR'));
+        $this->assertSame(['doctrine' => 'Leshak RR'], SyncPlanner::renames(['doctrine' => 'Leshak  rr'] + $row, $fit, 'Leshak RR'));
+    }
+
     public function testANewFitIsAdded(): void
     {
         $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX]]));

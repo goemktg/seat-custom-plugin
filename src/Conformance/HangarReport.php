@@ -130,6 +130,117 @@ final class HangarReport
     }
 
     /**
+     * Problem groups split again per doctrine, in fit order, so a long list
+     * can be shown one doctrine at a time.
+     *
+     * @return list<array{doctrine: string, ships: int, fits: list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>}>}>
+     */
+    public function doctrineGroups(): array
+    {
+        $doctrines = [];
+        foreach ($this->problemGroups() as $group) {
+            $doctrine = $group['fit']->doctrine;
+            $doctrines[$doctrine] ??= ['doctrine' => $doctrine, 'ships' => 0, 'fits' => []];
+            $doctrines[$doctrine]['ships'] += count($group['problems']);
+            $doctrines[$doctrine]['fits'][] = $group;
+        }
+
+        return array_values($doctrines);
+    }
+
+    /**
+     * Fit groups cut into pages of at most $perPage ships. A group cut at a page
+     * end carries on at the top of the next page, marked as continued.
+     *
+     * @param  list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>}>  $groups
+     * @return non-empty-list<list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>, continued: bool, needFix: int}>>
+     *         needFix counts the whole group, not just this page's piece
+     */
+    public static function pages(array $groups, int $perPage): array
+    {
+        $perPage = max(1, $perPage);
+        $pages = [[]];
+        $room = $perPage;
+        foreach ($groups as $group) {
+            $continued = false;
+            $problems = $group['problems'];
+            $group['needFix'] = count($problems);
+            while ($problems !== []) {
+                if ($room === 0) {
+                    $pages[] = [];
+                    $room = $perPage;
+                }
+                $piece = array_splice($problems, 0, $room);
+                $pages[array_key_last($pages)][] = ['problems' => $piece, 'continued' => $continued] + $group;
+                $room -= count($piece);
+                $continued = true;
+            }
+        }
+
+        return $pages;
+    }
+
+    /**
+     * Items to add and remove summed by type over the given problems, largest
+     * first. Accepted differences (refits, stowed) are not work and not counted.
+     *
+     * @param  iterable<array{match: MatchResult}>  $problems
+     * @return array{add: array<int, int>, remove: array<int, int>}
+     */
+    public static function totals(iterable $problems): array
+    {
+        $add = [];
+        $remove = [];
+        foreach ($problems as $problem) {
+            $match = $problem['match'];
+            foreach ([$match->missing, $match->cargoMissing, $match->containerMissing, $match->bayMissing] as $lines) {
+                foreach ($lines as $line) {
+                    $add[$line['typeId']] = ($add[$line['typeId']] ?? 0) + $line['count'];
+                }
+            }
+            foreach ($match->extra as $line) {
+                $remove[$line['typeId']] = ($remove[$line['typeId']] ?? 0) + $line['count'];
+            }
+        }
+        arsort($add);
+        arsort($remove);
+
+        return ['add' => $add, 'remove' => $remove];
+    }
+
+    /**
+     * A fit row with nothing to show: no target, no ship named after it, and
+     * no ledger records here ($stock null). A ledger count of 0 still shows.
+     *
+     * @param  array{target: int, named: int}  $row
+     */
+    public static function emptyRow(array $row, ?int $stock): bool
+    {
+        return $row['target'] === 0 && $row['named'] === 0 && $stock === null;
+    }
+
+    /**
+     * What a fit group's heading names besides the fit: the hull, then the
+     * doctrine unless it only repeats the hull or the fit name.
+     *
+     * @return list<string>
+     */
+    public static function headingParts(?string $hull, string $doctrine, string $fitName): array
+    {
+        $parts = [];
+        $hull = self::nameKey($hull);
+        if ($hull !== '') {
+            $parts[] = $hull;
+        }
+        $doctrine = self::nameKey($doctrine);
+        if ($doctrine !== '' && $doctrine !== $hull && $doctrine !== self::nameKey($fitName)) {
+            $parts[] = $doctrine;
+        }
+
+        return $parts;
+    }
+
+    /**
      * Ships and fits pair up by exact name, case included; only surrounding
      * whitespace (Unicode spaces included) is ignored. An empty key never matches.
      */

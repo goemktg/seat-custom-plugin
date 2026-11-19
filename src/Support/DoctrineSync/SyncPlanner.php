@@ -113,6 +113,23 @@ final class SyncPlanner
     }
 
     /**
+     * Names a linked fit should take from upstream. The database paired the two
+     * ignoring case (and its collation may ignore more), but Hangar Check pairs
+     * ships by the exact name, so a name changed only in case or spacing is copied.
+     *
+     * @param  array{fit_name: string, doctrine: string}  $row
+     * @return array<'fit_name'|'doctrine', string>  only the columns that differ
+     */
+    public static function renames(array $row, UpstreamFit $fit, string $doctrineName): array
+    {
+        return array_filter(
+            ['fit_name' => $fit->fitName, 'doctrine' => $doctrineName],
+            static fn (string $name, string $column): bool => $name !== (string) $row[$column],
+            ARRAY_FILTER_USE_BOTH,
+        );
+    }
+
+    /**
      * Whether a planned write still fits the fit's row as it is now, read under the row lock.
      * The plan was made from a plain read, so a user may have edited the fit since.
      *
