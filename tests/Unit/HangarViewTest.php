@@ -84,6 +84,31 @@ final class HangarViewTest extends TestCase
         self::assertSame(1, $match->itemsToAdd());
     }
 
+    public function test_a_long_doctrine_is_split_into_pages_of_ships(): void
+    {
+        $fits = [self::fit(1, self::LESHAK, 'Lesh A/M/A', 'Leshak RR'), self::fit(2, self::LESHAK, 'Guard A/M/A', 'Leshak RR')];
+        $ships = [];
+        for ($i = 0; $i < 7; $i++) {
+            $ships[] = self::ship(100 + $i, self::LESHAK, 'Lesh A/M/A');
+        }
+        for ($i = 0; $i < 4; $i++) {
+            $ships[] = self::ship(200 + $i, self::LESHAK, 'Guard A/M/A');
+        }
+        $report = HangarReport::build($ships, $fits, [], new FitMatcher(), static fn (): bool => true);
+
+        $pages = HangarReport::pages($report->doctrineGroups()[0]['fits'], 5);
+
+        self::assertCount(3, $pages);
+        $shape = array_map(static fn (array $page) => array_map(
+            static fn (array $g) => [$g['fit']->name, count($g['problems']), $g['continued']], $page), $pages);
+        self::assertSame([
+            [['Lesh A/M/A', 5, false]],
+            [['Lesh A/M/A', 2, true], ['Guard A/M/A', 3, false]],
+            [['Guard A/M/A', 1, true]],
+        ], $shape);
+        self::assertSame([[]], HangarReport::pages([], 5));
+    }
+
     public function test_a_group_heading_names_hull_and_doctrine_once_each(): void
     {
         self::assertSame(['Leshak'], HangarReport::headingParts('Leshak', 'Leshak', 'Lesh A/M/A'));

@@ -149,6 +149,38 @@ final class HangarReport
     }
 
     /**
+     * Fit groups cut into pages of at most $perPage ships. A group cut at a page
+     * end carries on at the top of the next page, marked as continued.
+     *
+     * @param  list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>}>  $groups
+     * @return non-empty-list<list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>, continued: bool, needFix: int}>>
+     *         needFix counts the whole group, not just this page's piece
+     */
+    public static function pages(array $groups, int $perPage): array
+    {
+        $perPage = max(1, $perPage);
+        $pages = [[]];
+        $room = $perPage;
+        foreach ($groups as $group) {
+            $continued = false;
+            $problems = $group['problems'];
+            $group['needFix'] = count($problems);
+            while ($problems !== []) {
+                if ($room === 0) {
+                    $pages[] = [];
+                    $room = $perPage;
+                }
+                $piece = array_splice($problems, 0, $room);
+                $pages[array_key_last($pages)][] = ['problems' => $piece, 'continued' => $continued] + $group;
+                $room -= count($piece);
+                $continued = true;
+            }
+        }
+
+        return $pages;
+    }
+
+    /**
      * Items to add and remove summed by type over the given problems, largest
      * first. Accepted differences (refits, stowed) are not work and not counted.
      *
