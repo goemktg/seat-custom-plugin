@@ -41,7 +41,13 @@ Route::group([
                 'uses' => 'SettingsController@update'
             ]);
         });
+    });
 
+    // Inventory pages live under their own first URL segment so the sidebar
+    // opens the Inventory group for them and not the Custom Plugin one.
+    Route::group([
+        'prefix'     => 'inventory',
+    ], function (): void {
         // Hangar Check: access is decided per corporation inside the pages
         Route::get('/hangar-check', 'HangarCheckController@index')
             ->name('custom-plugin.hangar.index');
@@ -71,4 +77,13 @@ Route::group([
             Route::delete('/stock/entries/{entry}', 'StockController@destroy')->whereNumber('entry')->name('custom-plugin.stock.destroy');
         });
     });
+
+    // These pages used to live under /custom-plugin; keep old links working.
+    Route::get('/custom-plugin/{page}/{rest?}', static function (string $page, ?string $rest = null) {
+        // the router hands over decoded segments; encode them again so a "?" or "#" stays part of the path
+        $path = implode('/', array_map('rawurlencode', explode('/', $page . ($rest === null ? '' : '/' . $rest))));
+        $query = request()->getQueryString();
+
+        return redirect('/inventory/' . $path . ($query === null ? '' : '?' . $query));
+    })->whereIn('page', ['hangar-check', 'doctrine-fits'])->where('rest', '.*');
 });

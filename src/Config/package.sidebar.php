@@ -24,13 +24,34 @@ return [
 
     // Integrating with the SeAT menu is defined here.
     // Refer to the web package for a structure reference.
+    //
+    // SeAT sorts the groups by key and opens a group when the first URL
+    // segment equals its route_segment, so each group needs its own segment
+    // (see Http/routes.php).
     'custom-plugin' => [
         'name'          => 'Custom Plugin',
         'label'         => 'custom-plugin::menu.main_level',
         'icon'          => 'fas fa-tools',
         'route_segment' => 'custom-plugin',
         // hide the whole group when no entry below is visible
-        'permission'    => ['custom-plugin.doctrine_menu', 'global.superuser'],
+        'permission'    => ['global.superuser'],
+        'entries'       => [
+            [
+                'name'          => 'Settings',
+                'label'         => 'custom-plugin::menu.settings',
+                'icon'          => 'fas fa-cogs',
+                'permission'    => 'global.superuser',
+                'route'         => 'custom-plugin.settings',
+            ],
+        ],
+    ],
+    'custom-plugin-inventory' => [
+        'name'          => 'Inventory',
+        'label'         => 'custom-plugin::menu.inventory',
+        'icon'          => 'fas fa-boxes',
+        'route_segment' => 'inventory',
+        // hide the whole group when no entry below is visible
+        'permission'    => ['custom-plugin.doctrine_menu'],
         'entries'       => [
             // the menu ability is defined in SeatCustomPluginServiceProvider::add_menu_gate()
             [
@@ -46,13 +67,6 @@ return [
                 'icon'          => 'fas fa-rocket',
                 'permission'    => 'custom-plugin.doctrine_menu',
                 'route'         => 'custom-plugin.fits.pick',
-            ],
-            [
-                'name'          => 'Settings',
-                'label'         => 'custom-plugin::menu.settings',
-                'icon'          => 'fas fa-cogs',
-                'permission'    => 'global.superuser',
-                'route'         => 'custom-plugin.settings',
             ],
         ],
     ],
