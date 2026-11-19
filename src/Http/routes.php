@@ -72,6 +72,7 @@ Route::group([
             Route::get('/{fit}/edit', 'DoctrineFitController@edit')->whereNumber('fit')->name('custom-plugin.fits.edit');
             Route::put('/{fit}', 'DoctrineFitController@update')->whereNumber('fit')->name('custom-plugin.fits.update');
             Route::delete('/{fit}', 'DoctrineFitController@destroy')->whereNumber('fit')->name('custom-plugin.fits.destroy');
+            Route::post('/{fit}/move', 'DoctrineFitController@move')->whereNumber('fit')->name('custom-plugin.fits.move');
             Route::post('/stagings', 'DoctrineFitController@storeStaging')->name('custom-plugin.stagings.store');
             Route::delete('/stagings/{staging}', 'DoctrineFitController@destroyStaging')->whereNumber('staging')->name('custom-plugin.stagings.destroy');
 

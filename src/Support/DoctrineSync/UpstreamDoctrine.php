@@ -97,7 +97,10 @@ final class UpstreamDoctrine
             return null;
         }
 
-        return new UpstreamFit(UpstreamFit::normalize($eft), $parsed->shipName, $fitName);
+        // a whole JSON number only: "42", 42.0 or true would be a different id after a cast
+        $shared = $fit['shared'] ?? null;
+
+        return new UpstreamFit(UpstreamFit::normalize($eft), $parsed->shipName, $fitName, is_int($shared) && $shared > 0 ? $shared : null);
     }
 
     private static function roughLabel(mixed $fit): string

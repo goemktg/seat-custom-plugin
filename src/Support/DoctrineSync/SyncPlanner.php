@@ -8,18 +8,29 @@ namespace Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync;
  * Decides, fit by fit, what following an upstream doctrine means for the
  * corporation's fits. Reads nothing and writes nothing itself.
  *
- * A linked fit is the one of this source with the upstream fit's hull and
- * name. Upstream fits carry no id, so a renamed fit is a missing one plus a
- * new one.
+ * A linked fit is the one of this source with the upstream fit's shared id
+ * and hull, else with its hull and name. A fit renamed upstream keeps its
+ * shared id, so its row (required counts, stock ledger) carries on under the
+ * new name; without a shared id a renamed fit is a missing one plus a new one.
+ *
+ * A shared fit of the doctrine site can sit in several followed doctrines, but
+ * the corporation keeps one row per hull and name. The doctrine that brought it
+ * in first keeps it up to date; the others report it as shared. When that
+ * doctrine is no longer followed or no longer has the fit, the next of the
+ * others to sync takes the row over and keeps it.
  */
 final class SyncPlanner
 {
+    private const EDITED_HERE = 'The EFT was changed here since the last sync.';
+
     /**
      * @param  int|null  $sourceId  the followed doctrine's row, null before it is first followed
      * @param  list<array{id: int, label: string, missing: bool}>  $linked  every fit of this source
      * @param  callable(UpstreamFit): array{shipTypeId: ?int, unresolved: list<string>}  $resolve  against SeAT's item data
-     * @param  callable(int, string, string): ?array{id: int, sourceId: ?int, eft: string, eftHash: ?string, missing: bool, sameHull: bool}  $find
-     *         the corporation's fit that the unique keys would pair with (hull, fit name, doctrine name), as the database compares names
+     * @param  callable(int, string, string, ?int): ?array{id: int, sourceId: ?int, eft: string, eftHash: ?string, missing: bool, sameHull: bool, sharedId: ?int, ownerFollowing: bool, ownerName: string, fitName?: string}  $find
+     *         this doctrine's fit with the shared id and hull, else the corporation's fit that the unique keys would pair with
+     *         (hull, fit name, doctrine name), as the database compares names;
+     *         sharedId, ownerFollowing and ownerName describe the followed doctrine it came from
      * @param  list<int>  $linkIds  manual fits the user chose to hand over to this doctrine
      * @return list<SyncAction>
      */
@@ -46,7 +57,7 @@ final class SyncPlanner
             }
             if ($resolved['unresolved'] !== []) {
                 // e.g. items newer than SeAT's item data: keep the linked copy as it is, still locked
-                $existing = $find($shipTypeId, $fit->fitName, $doctrine->name);
+                $existing = $find($shipTypeId, $fit->fitName, $doctrine->name, $fit->shared);
                 if ($existing !== null) {
                     $claimed[$existing['id']] = true;
                 }
@@ -55,7 +66,16 @@ final class SyncPlanner
                 continue;
             }
 
-            $existing = $find($shipTypeId, $fit->fitName, $doctrine->name);
+            $existing = $find($shipTypeId, $fit->fitName, $doctrine->name, $fit->shared);
+            // this doctrine's row of another doctrine-site fit that had this name (renamed or removed there):
+            // not this fit's, so it keeps its counts and stock and is never claimed by name
+            if ($existing !== null && $sourceId !== null && $existing['sourceId'] === $sourceId && $fit->shared !== null
+                && ($existing['sharedId'] ?? null) !== null && (int) $existing['sharedId'] !== $fit->shared) {
+                $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, detail: $existing['missing']
+                    ? sprintf('"%s", gone from the doctrine site, still has this name here. Move its counts and stock if needed, then delete it.', $existing['fitName'] ?? $fit->fitName)
+                    : 'Another fit of this doctrine still has this name here; it is checked again on the next sync.');
+                continue;
+            }
             $key = $existing !== null ? 'id:' . $existing['id'] : $shipTypeId . ':' . mb_strtolower($fit->fitName);
             if (isset($seen[$key]) || isset($seen[':' . mb_strtolower($fit->fitName)])) {
                 $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId,
@@ -79,27 +99,34 @@ final class SyncPlanner
             if ($existing['sourceId'] === null || $existing['sourceId'] !== $sourceId) {
                 if ($existing['sourceId'] === null && in_array($existing['id'], $linkIds, true)) {
                     $actions[] = new SyncAction(SyncAction::LINK, $fit->label(), $fit, $shipTypeId, $existing['id']);
+                } elseif ($existing['sourceId'] !== null && self::sameSharedFit($fit, $existing['sharedId'] ?? null, $existing['eftHash'])) {
+                    $actions[] = self::sharedCopy($fit, $shipTypeId, $existing);
                 } else {
                     $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'],
-                        $existing['sourceId'] === null
-                            ? SyncAction::HAND_FIT
-                            : 'A fit from another followed doctrine has this name on this hull.');
+                        match (true) {
+                            $existing['sourceId'] === null => SyncAction::HAND_FIT,
+                            // e.g. renamed there, leaving its old name to this doctrine's fit
+                            $existing['missing'] => sprintf('A fit gone from %s still has this name on this hull. Move its counts and stock if needed, then delete it.',
+                                $existing['ownerName'] ?? 'another doctrine'),
+                            default => 'A fit from another followed doctrine has this name on this hull.',
+                        });
                 }
                 continue;
             }
 
             $hash = UpstreamFit::hash($fit->eft);
-            if ($existing['eftHash'] !== null && UpstreamFit::hash($existing['eft']) !== $existing['eftHash']) {
-                $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'],
-                    'The EFT was changed here since the last sync.');
+            if (self::editedHere($existing)) {
+                $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'], self::EDITED_HERE);
                 continue;
             }
+            $renamed = isset($existing['fitName']) && mb_strtolower($existing['fitName']) !== mb_strtolower($fit->fitName)
+                ? sprintf('Renamed from "%s".', $existing['fitName']) : null;
             if ($existing['missing']) {
-                $actions[] = new SyncAction(SyncAction::RETURNED, $fit->label(), $fit, $shipTypeId, $existing['id']);
-            } elseif ($existing['eftHash'] === $hash) {
+                $actions[] = new SyncAction(SyncAction::RETURNED, $fit->label(), $fit, $shipTypeId, $existing['id'], $renamed);
+            } elseif ($existing['eftHash'] === $hash && $renamed === null) {
                 $actions[] = new SyncAction(SyncAction::UNCHANGED, $fit->label(), $fit, $shipTypeId, $existing['id']);
             } else {
-                $actions[] = new SyncAction(SyncAction::UPDATE, $fit->label(), $fit, $shipTypeId, $existing['id']);
+                $actions[] = new SyncAction(SyncAction::UPDATE, $fit->label(), $fit, $shipTypeId, $existing['id'], $renamed);
             }
         }
 
@@ -110,6 +137,66 @@ final class SyncPlanner
         }
 
         return $actions;
+    }
+
+    /**
+     * What to do about a copy of a shared fit another followed doctrine brought in.
+     *
+     * @param  array{id: int, eft: string, eftHash: ?string, missing: bool, ownerFollowing?: bool, ownerName?: string}  $existing
+     */
+    private static function sharedCopy(UpstreamFit $fit, int $shipTypeId, array $existing): SyncAction
+    {
+        $owner = $existing['ownerName'] ?? 'another doctrine';
+        $following = $existing['ownerFollowing'] ?? true;
+        if ($following && ! $existing['missing']) {
+            return new SyncAction(SyncAction::SHARED, $fit->label(), $fit, $shipTypeId, $existing['id'],
+                sprintf('Same fit as in %s; Hangar Check counts it once.', $owner));
+        }
+        // a fit edited here is never overwritten: it is fixed on the doctrine site
+        if (self::editedHere($existing)) {
+            return new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'], self::EDITED_HERE);
+        }
+
+        return new SyncAction(SyncAction::TAKE_OVER, $fit->label(), $fit, $shipTypeId, $existing['id'],
+            $following
+                ? sprintf('Taken over from %s, which no longer has this fit.', $owner)
+                : sprintf('Taken over from %s, which is no longer followed.', $owner));
+    }
+
+    /**
+     * Whether a linked row is a copy of the upstream fit's shared fit. A row synced
+     * before shared ids were kept has none; it counts as the same fit when it was
+     * last given exactly this EFT, as the doctrine site's copies all are.
+     */
+    private static function sameSharedFit(UpstreamFit $fit, mixed $sharedId, ?string $eftHash): bool
+    {
+        if ($fit->shared === null) {
+            return false;
+        }
+
+        return $sharedId === null
+            ? $eftHash !== null && $eftHash === UpstreamFit::hash($fit->eft)
+            : (int) $sharedId === $fit->shared;
+    }
+
+    /** @param array{eft: string, eftHash: ?string} $existing */
+    private static function editedHere(array $existing): bool
+    {
+        return $existing['eftHash'] !== null && UpstreamFit::hash($existing['eft']) !== $existing['eftHash'];
+    }
+
+    /**
+     * The shared fit id to store when it is not stored yet or changed upstream.
+     * Rows synced before shared ids were kept get theirs on their doctrine's next sync.
+     *
+     * @param  array{source_shared_id: mixed}  $row
+     * @return array{source_shared_id?: ?int}
+     */
+    public static function sharedChange(array $row, UpstreamFit $fit): array
+    {
+        $stored = $row['source_shared_id'] === null ? null : (int) $row['source_shared_id'];
+
+        return $stored === $fit->shared ? [] : ['source_shared_id' => $fit->shared];
     }
 
     /**
@@ -133,7 +220,8 @@ final class SyncPlanner
      * Whether a planned write still fits the fit's row as it is now, read under the row lock.
      * The plan was made from a plain read, so a user may have edited the fit since.
      *
-     * @param  array{source_id: ?int, sync_state: ?string, eft: string, source_eft_hash: ?string, ship_type_id: int}  $row
+     * @param  array{source_id: ?int, sync_state: ?string, eft: string, source_eft_hash: ?string, ship_type_id: int, source_shared_id?: mixed, owner_following?: bool}  $row
+     *         owner_following: whether the doctrine the row is linked to is still followed (takeovers only)
      */
     public static function stillValid(SyncAction $action, array $row, int $sourceId): bool
     {
@@ -147,6 +235,9 @@ final class SyncPlanner
             SyncAction::RETURNED => $sourceOf === $sourceId && $row['sync_state'] === 'missing' && $sameHull && $notEditedHere,
             SyncAction::MISSING => $sourceOf === $sourceId && $row['sync_state'] === null,
             SyncAction::UNCHANGED => $sourceOf === $sourceId,
+            SyncAction::TAKE_OVER => $sourceOf !== null && $sourceOf !== $sourceId && $sameHull && $notEditedHere
+                && $action->fit !== null && self::sameSharedFit($action->fit, $row['source_shared_id'] ?? null, $row['source_eft_hash'])
+                && ($row['sync_state'] === 'missing' || ($row['owner_following'] ?? true) === false),
             default => true,
         };
     }

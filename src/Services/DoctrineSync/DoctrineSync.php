@@ -122,6 +122,33 @@ class DoctrineSync
             ->update(['following' => false, 'updated_at' => now()]);
     }
 
+    /**
+     * Fits two or more followed doctrines share, for the Shared tab: each one
+     * still kept by a followed doctrine and reported by another as shared.
+     *
+     * @return array<int, list<string>>  fit id => every doctrine that has it, the keeping one first
+     */
+    public static function sharedFits(int $corporationId): array
+    {
+        $sources = DB::table(self::SOURCES)->where('corporation_id', $corporationId)->where('following', true)
+            ->get(['id', 'name', 'last_report']);
+        $reported = SourceStatus::sharedFits($sources->map(static fn ($s) => [
+            'name' => (string) $s->name, 'report' => $s->last_report,
+        ]));
+        if ($reported === []) {
+            return [];
+        }
+        $names = $sources->pluck('name', 'id');
+        $fits = DoctrineFit::where('corporation_id', $corporationId)->whereIn('id', array_keys($reported))
+            ->whereIn('source_id', $sources->pluck('id'))->whereNull('sync_state')->get(['id', 'source_id']);
+        $out = [];
+        foreach ($fits as $fit) {
+            $out[(int) $fit->id] = array_values(array_unique([(string) $names[$fit->source_id], ...$reported[(int) $fit->id]]));
+        }
+
+        return $out;
+    }
+
     /** Deletes history older than KEEP_DAYS, a batch at a time. */
     public static function prune(): int
     {
@@ -190,18 +217,33 @@ class DoctrineSync
 
             return ['shipTypeId' => (int) $hull['id'], 'unresolved' => array_values($compiled->unresolved)];
         };
+        // the doctrine a fit came from: whether it still holds the fit, for shared fits
+        $sources = DB::table(self::SOURCES)->where('corporation_id', $corporationId)->get(['id', 'name', 'following'])->keyBy('id');
         // the database compares names, exactly as the two unique keys will
-        $find = function (int $shipTypeId, string $fitName, string $doctrineName) use ($corporationId): ?array {
-            $row = DoctrineFit::where('corporation_id', $corporationId)->where('ship_type_id', $shipTypeId)->where('fit_name', $fitName)->first()
+        $find = function (int $shipTypeId, string $fitName, string $doctrineName, ?int $shared) use ($corporationId, $sources, $sourceId): ?array {
+            // this doctrine's copy of the same fit, whatever its name now: a rename upstream keeps the row
+            $row = ($shared === null || $sourceId === null ? null
+                : DoctrineFit::where('corporation_id', $corporationId)->where('source_id', $sourceId)
+                    ->where('source_shared_id', $shared)->where('ship_type_id', $shipTypeId)->orderBy('id')->first())
+                ?? DoctrineFit::where('corporation_id', $corporationId)->where('ship_type_id', $shipTypeId)->where('fit_name', $fitName)->first()
                 ?? DoctrineFit::where('corporation_id', $corporationId)->where('doctrine', $doctrineName)->where('fit_name', $fitName)->first();
+            if ($row === null) {
+                return null;
+            }
+            $owner = $row->source_id === null ? null : $sources->get($row->source_id);
 
-            return $row === null ? null : [
+            return [
                 'id' => (int) $row->id,
                 'sourceId' => $row->source_id === null ? null : (int) $row->source_id,
                 'eft' => (string) $row->eft,
                 'eftHash' => $row->source_eft_hash,
                 'missing' => $row->sync_state === 'missing',
                 'sameHull' => (int) $row->ship_type_id === $shipTypeId,
+                // a hand-made fit keeps no shared id, whatever an old link left behind
+                'sharedId' => $row->source_id === null || $row->source_shared_id === null ? null : (int) $row->source_shared_id,
+                'ownerFollowing' => $owner !== null && (bool) $owner->following,
+                'ownerName' => $owner === null ? (string) $row->doctrine : (string) $owner->name,
+                'fitName' => (string) $row->fit_name,
             ];
         };
 
@@ -232,14 +274,19 @@ class DoctrineSync
         $runId = (string) Str::ulid();
         $userName = $userId === null ? null : DB::table('users')->where('id', $userId)->value('name');
         $events = [];
-        $report = ['held' => [], 'failed' => []];
+        $report = ['held' => [], 'failed' => [], 'shared' => []];
         $counts = [];
         foreach ($done as $action) {
             $counts[$action->kind] = ($counts[$action->kind] ?? 0) + 1;
             if ($action->kind === SyncAction::HELD || $action->kind === SyncAction::FAILED) {
                 $report[$action->kind][] = ['fit' => $action->label, 'detail' => (string) $action->detail];
             }
-            if ($action->kind === SyncAction::UNCHANGED) {
+            if ($action->kind === SyncAction::SHARED) {
+                // read back for the Shared tab: which fits this doctrine shares with the one that keeps them
+                $report['shared'][] = ['fit' => $action->label, 'fitId' => $action->fitId, 'detail' => (string) $action->detail];
+            }
+            // a shared fit stays shared every hour: that is not news either
+            if ($action->kind === SyncAction::UNCHANGED || $action->kind === SyncAction::SHARED) {
                 continue;
             }
             // a fit still held or unreadable for the same reason is not news every hour
@@ -288,14 +335,23 @@ class DoctrineSync
                     'source_missing_at' => null,
                     'source_eft_hash' => UpstreamFit::hash($fit->eft),
                     'source_synced_at' => $now,
+                    'source_shared_id' => $fit->shared,
                 ];
-                if (in_array($action->kind, [SyncAction::UPDATE, SyncAction::RETURNED, SyncAction::LINK, SyncAction::MISSING, SyncAction::UNCHANGED], true)) {
+                if (in_array($action->kind, [SyncAction::UPDATE, SyncAction::RETURNED, SyncAction::LINK, SyncAction::TAKE_OVER, SyncAction::MISSING, SyncAction::UNCHANGED], true)) {
                     // the plan came from a plain read; a user may have edited the fit since
                     $row = DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->lockForUpdate()
-                        ->first(['id', 'source_id', 'sync_state', 'eft', 'source_eft_hash', 'ship_type_id', 'fit_name', 'doctrine']);
+                        ->first(['id', 'source_id', 'sync_state', 'eft', 'source_eft_hash', 'source_shared_id', 'ship_type_id', 'fit_name', 'doctrine']);
+                    // Whether the doctrine keeping a shared fit is still followed. A plain read, so inside
+                    // this run's transaction it sees what the plan saw, not a newer value; not a lock, as
+                    // that doctrine's own sync locks its source row before its fits and locking it here,
+                    // after the fit, could deadlock. A doctrine followed again meanwhile simply finds the
+                    // fit kept by this one and reports it as shared, so either way one doctrine keeps it.
+                    $ownerFollowing = $action->kind !== SyncAction::TAKE_OVER || $row?->source_id === null ? null
+                        : (bool) DB::table(self::SOURCES)->where('id', $row->source_id)->value('following');
                     if ($row === null || ! SyncPlanner::stillValid($action, [
                         'source_id' => $row->source_id, 'sync_state' => $row->sync_state, 'eft' => (string) $row->eft,
                         'source_eft_hash' => $row->source_eft_hash, 'ship_type_id' => (int) $row->ship_type_id,
+                        'source_shared_id' => $row->source_shared_id, 'owner_following' => $ownerFollowing,
                     ], $sourceId)) {
                         throw new \UnexpectedValueException(self::CHANGED_MEANWHILE);
                     }
@@ -311,6 +367,7 @@ class DoctrineSync
                     case SyncAction::UPDATE:
                     case SyncAction::RETURNED:
                     case SyncAction::LINK:
+                    case SyncAction::TAKE_OVER:
                         // the last edit is this sync's: its user, or nobody for the hourly sync
                         DoctrineFit::whereKey($row->id)->firstOrFail()
                             ->fill($linkedValues() + self::renamesOf($row, $fit, $doctrine) + ['updated_by' => $userId])->save();
@@ -320,10 +377,13 @@ class DoctrineSync
                             ->update(['sync_state' => 'missing', 'source_missing_at' => $now, 'updated_by' => $userId]);
                         break;
                     case SyncAction::UNCHANGED:
-                        // follows a doctrine or fit renamed upstream, a change of case or spacing included
-                        $renames = self::renamesOf($row, $fit, $doctrine);
-                        if ($renames !== []) {
-                            DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->update($renames);
+                        // follows a doctrine or fit renamed upstream, a change of case or spacing included,
+                        // and a fit that became (or stopped being) a shared fit; the EFT hash and the last
+                        // editor stay, so an edit made here is still noticed
+                        $changes = self::renamesOf($row, $fit, $doctrine)
+                            + SyncPlanner::sharedChange(['source_shared_id' => $row->source_shared_id], $fit);
+                        if ($changes !== []) {
+                            DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->update($changes);
                         }
                         break;
                 }
@@ -334,7 +394,11 @@ class DoctrineSync
             }
 
             return new SyncAction(SyncAction::HELD, $action->label, $fit, $action->shipTypeId, $action->fitId,
-                'Another fit already has this name in this doctrine or on this hull.');
+                match (true) {
+                    $action->kind === SyncAction::TAKE_OVER => 'This doctrine already has another fit with this name, so the shared fit cannot move to it.',
+                    str_starts_with((string) $action->detail, 'Renamed from') => 'Renamed on the doctrine site to a name another fit already has here; rename or delete that fit.',
+                    default => 'Another fit already has this name in this doctrine or on this hull.',
+                });
         } catch (\UnexpectedValueException $e) {
             if ($e->getMessage() !== self::CHANGED_MEANWHILE) {
                 throw $e;

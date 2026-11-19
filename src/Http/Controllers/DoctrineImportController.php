@@ -146,7 +146,8 @@ class DoctrineImportController extends Controller
     {
         $parts = [];
         foreach ([SyncAction::ADD => 'added', SyncAction::UPDATE => 'updated', SyncAction::LINK => 'linked',
-            SyncAction::RETURNED => 'back on the site', SyncAction::MISSING => 'gone from the site',
+            SyncAction::RETURNED => 'back on the site', SyncAction::TAKE_OVER => 'taken over', SyncAction::SHARED => 'shared',
+            SyncAction::MISSING => 'gone from the site',
             SyncAction::HELD => 'held', SyncAction::FAILED => 'not readable'] as $kind => $label) {
             if (($counts[$kind] ?? 0) > 0) {
                 $parts[] = sprintf('%d %s', $counts[$kind], $label);

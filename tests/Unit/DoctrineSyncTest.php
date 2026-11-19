@@ -45,7 +45,8 @@ final class DoctrineSyncTest extends TestCase
         return static function (int $shipTypeId, string $fitName, string $doctrine) use ($rows): ?array {
             $row = $rows[$shipTypeId . ':' . mb_strtolower($fitName)] ?? null;
 
-            return $row === null ? null : $row + ['eft' => self::FEROX, 'eftHash' => null, 'missing' => false, 'sameHull' => true];
+            return $row === null ? null : $row + ['eft' => self::FEROX, 'eftHash' => null, 'missing' => false, 'sameHull' => true,
+                'sharedId' => null, 'ownerFollowing' => true, 'ownerName' => 'Shield Fleet'];
         };
     }
 
@@ -311,11 +312,207 @@ final class DoctrineSyncTest extends TestCase
     public function testOnlyAddUpdateLinkAndReturnWriteAFit(): void
     {
         $writes = array_filter(
-            [SyncAction::ADD, SyncAction::UPDATE, SyncAction::LINK, SyncAction::RETURNED, SyncAction::UNCHANGED, SyncAction::MISSING, SyncAction::HELD, SyncAction::FAILED],
+            [SyncAction::ADD, SyncAction::UPDATE, SyncAction::LINK, SyncAction::RETURNED, SyncAction::TAKE_OVER, SyncAction::UNCHANGED,
+                SyncAction::SHARED, SyncAction::MISSING, SyncAction::HELD, SyncAction::FAILED],
             static fn (string $kind): bool => (new SyncAction($kind, 'x'))->writes(),
         );
 
-        $this->assertSame([SyncAction::ADD, SyncAction::UPDATE, SyncAction::LINK, SyncAction::RETURNED], array_values($writes));
+        $this->assertSame([SyncAction::ADD, SyncAction::UPDATE, SyncAction::LINK, SyncAction::RETURNED, SyncAction::TAKE_OVER], array_values($writes));
+    }
+
+    public function testReadsTheSharedFitIdOnlyWhenItIsAPositiveWholeNumber(): void
+    {
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([
+            ['eft' => self::FEROX, 'shared' => 42, 'sharedV' => 3],
+            ['eft' => str_replace('Rail Ferox', 'A', self::FEROX), 'shared' => '42'],
+            ['eft' => str_replace('Rail Ferox', 'B', self::FEROX), 'shared' => 42.0],
+            ['eft' => str_replace('Rail Ferox', 'C', self::FEROX), 'shared' => 0],
+            ['eft' => str_replace('Rail Ferox', 'D', self::FEROX), 'shared' => -3],
+            ['eft' => str_replace('Rail Ferox', 'E', self::FEROX), 'shared' => true],
+            ['eft' => str_replace('Rail Ferox', 'F', self::FEROX)],
+        ]));
+
+        $this->assertSame([42, null, null, null, null, null, null], array_map(static fn (UpstreamFit $f) => $f->shared, $doctrine->fits));
+    }
+
+    public function testReadsTheReorganisedDoctrineSiteAnswerWhereEveryFitIsShared(): void
+    {
+        $scimi = "[Scimitar, Scimi Logi]\nDamage Control II\n";
+        $doctrine = UpstreamDoctrine::fromResponse([
+            'doctrine' => ['slug' => 'rail-ferox', 'name' => 'Rail Ferox Fleet', 'status' => 'active', 'roles' => [
+                ['role' => 1, 'name' => 'DPS', 'fits' => [
+                    ['eft' => self::FEROX, 'ship' => 'Ferox', 'name' => 'Rail Ferox', 'shared' => 7, 'sharedV' => 2, 'note' => 'n', 'doctrineNote' => ''],
+                ]],
+                ['role' => 4, 'name' => 'Logi', 'fits' => [
+                    ['eft' => $scimi, 'ship' => 'Scimitar', 'name' => 'Scimi Logi', 'shared' => 12, 'sharedV' => 1, 'note' => '', 'doctrineNote' => 'Anchor up'],
+                ]],
+            ]],
+            'version' => 9,
+            'updatedAt' => 1,
+        ]);
+
+        $this->assertSame([7, 12], array_map(static fn (UpstreamFit $f) => $f->shared, $doctrine->fits));
+        $this->assertSame([UpstreamFit::normalize(self::FEROX), UpstreamFit::normalize($scimi)], array_map(static fn (UpstreamFit $f) => $f->eft, $doctrine->fits),
+            'notes stay outside the EFT, so every copy of a fit hashes the same');
+        $this->assertSame([], $doctrine->unreadable);
+    }
+
+    public function testAFitRenamedUpstreamKeepsItsRowWhenItsSharedIdAndHullStay(): void
+    {
+        $renamed = str_replace('Rail Ferox', 'Rail Ferox v2', self::FEROX);
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => $renamed, 'shared' => 42]]));
+        $old = ['id' => 5, 'sourceId' => self::SOURCE, 'sharedId' => 42, 'fitName' => 'Rail Ferox', 'eftHash' => UpstreamFit::hash(self::FEROX)];
+        $find = static function (int $ship, string $name, string $doctrine, ?int $shared) use ($old): ?array {
+            return $shared === 42 && $ship === 16227
+                ? $old + ['eft' => self::FEROX, 'missing' => false, 'sameHull' => true, 'ownerFollowing' => true, 'ownerName' => 'Rail Ferox Fleet']
+                : null;
+        };
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [['id' => 5, 'label' => 'Rail Ferox (Ferox)', 'missing' => false]], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::UPDATE], array_column($actions, 'kind'), 'one row renamed, not a missing one plus a new one');
+        $this->assertSame(5, $actions[0]->fitId);
+        $this->assertStringContainsString('Renamed from "Rail Ferox"', (string) $actions[0]->detail);
+        $this->assertSame(['fit_name' => 'Rail Ferox v2'], SyncPlanner::renames(['fit_name' => 'Rail Ferox', 'doctrine' => 'Rail Ferox Fleet'], $doctrine->fits[0], 'Rail Ferox Fleet'));
+    }
+
+    public function testANewFitTakingARenamedFitsOldNameDoesNotTakeItsRow(): void
+    {
+        // upstream: fit 42 "Rail Ferox" became "Rail Ferox v2", and a new fit 43 took the old name; 43 comes first
+        $renamed = str_replace('Rail Ferox', 'Rail Ferox v2', self::FEROX);
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX, 'shared' => 43], ['eft' => $renamed, 'shared' => 42]]));
+        $row = ['id' => 5, 'sourceId' => self::SOURCE, 'sharedId' => 42, 'fitName' => 'Rail Ferox', 'eft' => self::FEROX,
+            'eftHash' => UpstreamFit::hash(self::FEROX), 'missing' => false, 'sameHull' => true, 'ownerFollowing' => true, 'ownerName' => 'Rail Ferox Fleet'];
+        $find = static fn (int $ship, string $name, string $doctrine, ?int $shared): ?array => $shared === 42 || $name === 'Rail Ferox' ? $row : null;
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [['id' => 5, 'label' => 'x', 'missing' => false]], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::HELD, SyncAction::UPDATE], array_column($actions, 'kind'));
+        $this->assertNull($actions[0]->fitId, 'the new fit claims no row');
+        $this->assertSame(5, $actions[1]->fitId, 'the renamed fit keeps its row, counts and stock');
+    }
+
+    public function testAGoneFitOfAnotherDoctrineHoldingTheNameSaysHowToFreeIt(): void
+    {
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX]]));
+        $find = self::finder(['16227:rail ferox' => ['id' => 9, 'sourceId' => 99, 'missing' => true, 'ownerName' => 'Legion',
+            'eft' => 'other', 'eftHash' => UpstreamFit::hash('other')]]);
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::HELD], array_column($actions, 'kind'));
+        $this->assertStringContainsString('gone from Legion', (string) $actions[0]->detail);
+        $this->assertStringContainsString('then delete it', (string) $actions[0]->detail);
+    }
+
+    /** @return array{0: UpstreamDoctrine, 1: callable} */
+    private static function sharedCopy(array $row, ?int $shared = 42): array
+    {
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX] + ($shared === null ? [] : ['shared' => $shared])]));
+
+        return [$doctrine, self::finder(['16227:rail ferox' => $row + [
+            'id' => 9, 'sourceId' => 99, 'sharedId' => 42, 'eftHash' => UpstreamFit::hash(self::FEROX),
+        ]])];
+    }
+
+    public function testACopyOfASharedFitAnotherFollowedDoctrineBroughtInIsSharedNotHeld(): void
+    {
+        [$doctrine, $find] = self::sharedCopy([]);
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::SHARED], array_column($actions, 'kind'));
+        $this->assertSame(9, $actions[0]->fitId);
+        $this->assertFalse($actions[0]->writes());
+        $this->assertStringContainsString('Shield Fleet', (string) $actions[0]->detail);
+    }
+
+    public function testASharedCopyIsAlsoSharedOnTheFirstPreviewBeforeTheDoctrineIsFollowed(): void
+    {
+        [$doctrine, $find] = self::sharedCopy([]);
+
+        $this->assertSame([SyncAction::SHARED], array_column(SyncPlanner::plan($doctrine, null, [], self::resolver(), $find), 'kind'));
+    }
+
+    public function testASameNameFromAnotherDoctrineThatIsNotTheSameSharedFitIsStillHeld(): void
+    {
+        [$other] = self::sharedCopy([]);
+        [, $find] = self::sharedCopy(['sharedId' => 41]);
+        [$plain, $findPlain] = self::sharedCopy([], null);
+        $older = str_replace('250mm Railgun II', '200mm Railgun II', self::FEROX);
+        [$copy, $unmarkedOther] = self::sharedCopy(['sharedId' => null, 'eft' => $older, 'eftHash' => UpstreamFit::hash($older)]);
+
+        $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($other, self::SOURCE, [], self::resolver(), $find), 'kind'));
+        $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($plain, self::SOURCE, [], self::resolver(), $findPlain), 'kind'));
+        $this->assertSame([SyncAction::HELD], array_column(SyncPlanner::plan($copy, self::SOURCE, [], self::resolver(), $unmarkedOther), 'kind'),
+            'a row without a shared id and with another EFT may be another fit');
+    }
+
+    public function testARowSyncedBeforeSharedIdsWereKeptIsTheSameFitWhenItHasTheSameEft(): void
+    {
+        [$doctrine, $unmarked] = self::sharedCopy(['sharedId' => null]);
+        [, $unmarkedGone] = self::sharedCopy(['sharedId' => null, 'ownerFollowing' => false]);
+
+        $this->assertSame([SyncAction::SHARED], array_column(SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $unmarked), 'kind'));
+        $this->assertSame([SyncAction::TAKE_OVER], array_column(SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $unmarkedGone), 'kind'),
+            'its doctrine is no longer followed, so nothing else would ever mark it');
+    }
+
+    public function testASharedFitIsTakenOverWhenItsDoctrineIsNoLongerFollowedOrNoLongerHasIt(): void
+    {
+        [$doctrine, $unfollowed] = self::sharedCopy(['ownerFollowing' => false]);
+        [, $gone] = self::sharedCopy(['missing' => true]);
+
+        $a = SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $unfollowed);
+        $b = SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $gone);
+
+        $this->assertSame([SyncAction::TAKE_OVER], array_column($a, 'kind'));
+        $this->assertSame(9, $a[0]->fitId);
+        $this->assertTrue($a[0]->writes());
+        $this->assertStringContainsString('no longer followed', (string) $a[0]->detail);
+        $this->assertSame([SyncAction::TAKE_OVER], array_column($b, 'kind'));
+        $this->assertStringContainsString('no longer has', (string) $b[0]->detail);
+    }
+
+    public function testASharedFitEditedHereIsHeldInsteadOfTakenOver(): void
+    {
+        $edited = str_replace('250mm Railgun II', '200mm Railgun II', self::FEROX);
+        [$doctrine, $find] = self::sharedCopy(['ownerFollowing' => false, 'eft' => $edited]);
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::HELD], array_column($actions, 'kind'));
+        $this->assertStringContainsString('changed here', (string) $actions[0]->detail);
+    }
+
+    public function testATakeOverIsDroppedWhenTheRowChangedMeanwhile(): void
+    {
+        $fit = new UpstreamFit(self::FEROX, 'Ferox', 'Rail Ferox', 42);
+        $take = new SyncAction(SyncAction::TAKE_OVER, 'Rail Ferox (Ferox)', $fit, 16227, 9);
+        $row = ['source_id' => 99, 'sync_state' => null, 'eft' => self::FEROX, 'source_eft_hash' => UpstreamFit::hash(self::FEROX),
+            'ship_type_id' => 16227, 'source_shared_id' => 42, 'owner_following' => false];
+
+        $this->assertTrue(SyncPlanner::stillValid($take, $row, self::SOURCE));
+        $this->assertTrue(SyncPlanner::stillValid($take, ['owner_following' => true, 'sync_state' => 'missing'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($take, ['owner_following' => true] + $row, self::SOURCE), 'its doctrine is followed again');
+        $this->assertFalse(SyncPlanner::stillValid($take, ['source_id' => self::SOURCE] + $row, self::SOURCE), 'already ours');
+        $this->assertFalse(SyncPlanner::stillValid($take, ['source_id' => null] + $row, self::SOURCE), 'became a hand-made fit');
+        $this->assertFalse(SyncPlanner::stillValid($take, ['source_shared_id' => 41] + $row, self::SOURCE));
+        $this->assertTrue(SyncPlanner::stillValid($take, ['source_shared_id' => null] + $row, self::SOURCE), 'unmarked, same EFT');
+        $this->assertFalse(SyncPlanner::stillValid($take, ['source_shared_id' => null, 'source_eft_hash' => null, 'eft' => 'x'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($take, ['eft' => 'edited here'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($take, ['ship_type_id' => 1] + $row, self::SOURCE));
+    }
+
+    public function testTheSharedIdIsKeptOnlyWhenItChanged(): void
+    {
+        $fit = new UpstreamFit(self::FEROX, 'Ferox', 'Rail Ferox', 42);
+        $plain = new UpstreamFit(self::FEROX, 'Ferox', 'Rail Ferox');
+
+        $this->assertSame([], SyncPlanner::sharedChange(['source_shared_id' => 42], $fit));
+        $this->assertSame(['source_shared_id' => 42], SyncPlanner::sharedChange(['source_shared_id' => null], $fit));
+        $this->assertSame(['source_shared_id' => null], SyncPlanner::sharedChange(['source_shared_id' => '42'], $plain), 'no longer shared upstream');
+        $this->assertSame([], SyncPlanner::sharedChange(['source_shared_id' => null], $plain));
     }
 
     public function testTheDiffNamesWhatWasAddedAndRemoved(): void

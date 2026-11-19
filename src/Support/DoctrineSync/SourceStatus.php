@@ -41,6 +41,36 @@ final class SourceStatus
         return false;
     }
 
+    /** Fits the last run found already brought in by another followed doctrine. */
+    public static function sharedCount(?string $lastReport): int
+    {
+        $report = $lastReport === null ? null : json_decode($lastReport, true);
+
+        return is_array($report) && is_array($report['shared'] ?? null) ? count($report['shared']) : 0;
+    }
+
+    /**
+     * Which fits followed doctrines last reported as shared, and by which of them.
+     *
+     * @param  iterable<array{name: string, report: ?string}>  $sources  followed doctrines only
+     * @return array<int, list<string>>  fit id => names of the doctrines that share it besides its own
+     */
+    public static function sharedFits(iterable $sources): array
+    {
+        $fits = [];
+        foreach ($sources as $source) {
+            $report = $source['report'] === null ? null : json_decode($source['report'], true);
+            foreach (is_array($report) && is_array($report['shared'] ?? null) ? $report['shared'] : [] as $row) {
+                $id = is_array($row) ? ($row['fitId'] ?? null) : null;
+                if (is_int($id) && $id > 0 && ! in_array($source['name'], $fits[$id] ?? [], true)) {
+                    $fits[$id][] = $source['name'];
+                }
+            }
+        }
+
+        return $fits;
+    }
+
     /** @return array{held: int, failed: int} */
     public static function problems(?string $lastReport): array
     {

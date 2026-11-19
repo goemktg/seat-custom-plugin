@@ -6,6 +6,8 @@
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::UPDATE => ['Update', 'badge-light border'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::LINK => ['Link', 'badge-secondary'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::RETURNED => ['Back', 'badge-light border'],
+      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::TAKE_OVER => ['Take over', 'badge-secondary'],
+      \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::SHARED => ['Shared', 'badge-light border'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::MISSING => ['Gone', 'badge-warning'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::HELD => ['Held', 'badge-danger'],
       \Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction::FAILED => ['Not readable', 'badge-danger'],

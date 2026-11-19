@@ -161,4 +161,29 @@ final class DoctrineImportUiTest extends TestCase
         self::assertSame(['held' => 1, 'failed' => 2], SourceStatus::problems('{"held":[{"fit":"A"}],"failed":[{"fit":"B"},{"fit":"C"}]}'));
         self::assertSame(['held' => 0, 'failed' => 0], SourceStatus::problems(null));
     }
+
+    public function test_shared_fits_are_counted_apart_and_are_not_a_problem(): void
+    {
+        $report = json_encode(['held' => [], 'failed' => [], 'shared' => [
+            ['fit' => 'Rail Ferox (Ferox)', 'fitId' => 9, 'detail' => 'x'],
+            ['fit' => 'Scimi (Scimitar)', 'fitId' => 10, 'detail' => 'x'],
+        ]]);
+
+        self::assertSame(2, SourceStatus::sharedCount($report));
+        self::assertSame(0, SourceStatus::sharedCount(null));
+        self::assertSame(['held' => 0, 'failed' => 0], SourceStatus::problems($report));
+        self::assertSame(SourceStatus::OK, SourceStatus::of('2026-11-19 10:00:00', null, $report));
+    }
+
+    public function test_shared_fit_ids_name_the_doctrines_that_reported_them(): void
+    {
+        $reports = [
+            ['name' => 'Shield Fleet', 'report' => json_encode(['shared' => [['fit' => 'a', 'fitId' => 9], ['fit' => 'b', 'fitId' => 10]]])],
+            ['name' => 'Rail Ferox Fleet', 'report' => json_encode(['shared' => [['fit' => 'a', 'fitId' => 9], ['fit' => 'bad', 'fitId' => '11'], ['fit' => 'c']]])],
+            ['name' => 'Old', 'report' => null],
+            ['name' => 'Broken', 'report' => '{'],
+        ];
+
+        self::assertSame([9 => ['Shield Fleet', 'Rail Ferox Fleet'], 10 => ['Shield Fleet']], SourceStatus::sharedFits($reports));
+    }
 }

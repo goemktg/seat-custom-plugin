@@ -7,10 +7,15 @@ namespace Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync;
 /** One fit of an upstream doctrine, as far as its EFT text tells. */
 final class UpstreamFit
 {
+    /**
+     * @param  ?int  $shared  the doctrine site's shared fit this is a copy of; copies of one
+     *                        shared fit have the same hull, name and EFT in every doctrine
+     */
     public function __construct(
         public readonly string $eft,
         public readonly string $shipName,
         public readonly string $fitName,
+        public readonly ?int $shared = null,
     ) {
     }
 
