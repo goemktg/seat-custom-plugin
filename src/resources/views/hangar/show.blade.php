@@ -250,7 +250,7 @@
                 </thead>
                 @foreach([[$shownFits, false], [$emptyFits, true]] as [$rows, $empty])
                 @continue($rows === [])
-                <tbody @if($empty) id="cp-empty-fits" hidden @endif>
+                <tbody @if($empty) id="cp-empty-fits" data-cp-hidden @endif>
                   @foreach($rows as $row)
                     <tr class="cp-stock-row" title="Open the stock ledger for {{ $row['name'] }}">
                       <td>
@@ -300,7 +300,7 @@
             </div>
             <div class="card-footer small">
               @if($emptyFits !== [])
-                <button type="button" class="btn btn-link btn-sm p-0 mb-2 cp-empty-toggle" aria-controls="cp-empty-fits" aria-expanded="false"
+                <button type="button" class="btn btn-link btn-sm p-0 mb-2 cp-empty-toggle" aria-controls="cp-empty-fits" aria-expanded="false" hidden
                         data-show="Show {{ count($emptyFits) }} empty {{ count($emptyFits) === 1 ? 'fit' : 'fits' }}" data-hide="Hide empty fits">
                   Show {{ count($emptyFits) }} empty {{ count($emptyFits) === 1 ? 'fit' : 'fits' }}
                 </button>
@@ -376,7 +376,7 @@
     .cp-outside { font-weight: 600; margin-top: .125rem; }
     .cp-tip { border-bottom: 1px dotted currentColor; cursor: help; }
     .cp-totals { padding: 1rem 1.25rem .5rem; border-bottom: 1px solid rgba(0,0,0,.125); }
-    .cp-hangar details > summary { cursor: pointer; }
+    .cp-hangar details > summary { cursor: pointer; min-height: 1.5rem; padding: .125rem 0; }
     .cp-shopping > summary, .cp-accepted > summary { font-size: .8125rem; opacity: .8; }
     .cp-accepted { margin-top: .375rem; }
     .cp-doctrines { padding: .75rem 1.25rem 0; gap: .25rem; }
@@ -466,7 +466,8 @@
     });
 
     // pages after the first are hidden only once script runs, so nothing is lost without it
-    document.querySelectorAll('.cp-page[data-cp-hidden]').forEach(function (p) { p.hidden = true; });
+    document.querySelectorAll('.cp-page[data-cp-hidden], #cp-empty-fits[data-cp-hidden]').forEach(function (p) { p.hidden = true; });
+    document.querySelectorAll('.cp-empty-toggle').forEach(function (b) { b.hidden = false; });
 
     // accepted differences: folded by default; the officer's choice is remembered in this browser
     var acceptedKey = 'custom-plugin.hangar.accepted';
