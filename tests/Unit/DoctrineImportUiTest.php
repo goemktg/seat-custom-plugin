@@ -114,6 +114,16 @@ final class DoctrineImportUiTest extends TestCase
         self::assertSame(['123', 'rail-ferox'], ImportInput::slugs(['123', 'rail-ferox', '123']));
     }
 
+    public function test_many_sent_slugs_cost_linear_time(): void
+    {
+        $distinct = array_map(static fn (int $i) => 'd' . $i, range(1, 40000));
+        $dupes = array_fill(0, 40000, 'same');
+        $t = microtime(true);
+        self::assertCount(ImportInput::MAX_DOCTRINES, ImportInput::slugs($distinct));
+        self::assertSame(['same'], ImportInput::slugs($dupes));
+        self::assertLessThan(0.5, microtime(true) - $t, '40k slugs must not take quadratic time');
+    }
+
     public function test_link_ids_are_read_per_doctrine(): void
     {
         $sent = ['rail-ferox' => ['5', '6', 'x', '-1'], 'logi' => '7'];

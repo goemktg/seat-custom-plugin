@@ -23,7 +23,7 @@ class DoctrineClient
 
     private const MIN_TOKEN = 32;
 
-    /** Connect (5 s) plus a slow but honest transfer; a stalled or trickling answer ends here. */
+    /** A second guard on reading the received body (curl's 15 s timeout already bounds the transfer). */
     private const DEADLINE_SECONDS = 20;
 
     public function __construct(private readonly ?string $baseUrl, private readonly ?string $token)
@@ -98,19 +98,29 @@ class DoctrineClient
         if (! $this->configured()) {
             throw new DoctrineSyncException('The doctrine site is not set up on this server.');
         }
-        // with a streamed body the timeout only covers each read, so the whole answer has its own deadline
         $deadline = microtime(true) + self::DEADLINE_SECONDS;
         try {
             $response = Http::withToken((string) $this->token)
                 ->acceptJson()
                 ->connectTimeout(5)
+                // curl's timeout covers the whole exchange, headers included (a streamed
+                // body would only time each read, so a trickling answer could run on)
                 ->timeout(15)
-                // a redirect would carry the token elsewhere; streaming lets the size cap
-                // stop the transfer instead of buffering all of it first
-                ->withOptions(['allow_redirects' => false, 'stream' => true])
+                ->withOptions([
+                    // a redirect would carry the token elsewhere
+                    'allow_redirects' => false,
+                    // stops the transfer once it passes the cap, whatever Content-Length said
+                    'progress' => static function ($total, int $downloaded): void {
+                        if ($downloaded > self::MAX_BYTES) {
+                            throw new DoctrineSyncException('The doctrine site sent an answer that is too large.');
+                        }
+                    },
+                ])
                 ->get(rtrim((string) $this->baseUrl, '/') . $path);
         } catch (ConnectionException) {
             throw new DoctrineSyncException('Could not reach the doctrine site.');
+        } catch (DoctrineSyncException $e) {
+            throw $e;
         } catch (TransferException) {
             // e.g. a TLS failure: a fixed message, never the address or the token
             throw new DoctrineSyncException('The request to the doctrine site failed.');

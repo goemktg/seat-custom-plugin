@@ -28,15 +28,21 @@ final class ImportInput
         if (! is_array($sent)) {
             return [];
         }
-        // a list, not array keys: PHP would turn an all-digit slug such as "123" into an int key
+        // kept as a list (an all-digit slug such as "123" would become an int array key);
+        // the prefixed set keeps duplicate checks constant-time, and reading stops at the cap
         $out = [];
+        $seen = [];
         foreach ($sent as $slug) {
-            if (is_string($slug) && preg_match(UpstreamDoctrine::SLUG, $slug) === 1 && ! in_array($slug, $out, true)) {
+            if (count($out) === self::MAX_DOCTRINES) {
+                break;
+            }
+            if (is_string($slug) && ! isset($seen['s' . $slug]) && preg_match(UpstreamDoctrine::SLUG, $slug) === 1) {
+                $seen['s' . $slug] = true;
                 $out[] = $slug;
             }
         }
 
-        return array_slice($out, 0, self::MAX_DOCTRINES);
+        return $out;
     }
 
     /** @return list<int> manual fits the user ticked to link for this doctrine */
