@@ -124,6 +124,63 @@ final class DoctrineSyncTest extends TestCase
         $this->assertNotSame(UpstreamFit::hash("[Ferox, A]\nDamage Control II\n"), UpstreamFit::hash("[Ferox, A]\nDamage Control I\n"));
     }
 
+    public function testAFitWithUnknownItemsKeepsItsLinkedCopy(): void
+    {
+        // e.g. an item newer than SeAT's item data: the local fit must not turn "gone" and unlock
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX]]));
+        $linked = [['id' => 5, 'label' => 'Rail Ferox (Ferox)', 'missing' => false]];
+        $finder = self::finder(['16227:rail ferox' => ['id' => 5, 'sourceId' => self::SOURCE]]);
+
+        $kinds = self::byKind(SyncPlanner::plan($doctrine, self::SOURCE, $linked, self::resolver(['Magnetic Field Stabilizer II']), $finder));
+
+        $this->assertCount(1, $kinds[SyncAction::FAILED]);
+        $this->assertArrayNotHasKey(SyncAction::MISSING, $kinds);
+    }
+
+    public function testNothingIsMarkedGoneWhileSomeUpstreamFitCannotBeMatched(): void
+    {
+        // an unreadable fit or an unknown hull could be the linked one; wait until the doctrine reads cleanly
+        $linked = [['id' => 5, 'label' => 'Rail Ferox (Ferox)', 'missing' => false]];
+        $unreadable = UpstreamDoctrine::fromResponse(self::response([['eft' => 'no header', 'name' => 'Rail Ferox', 'ship' => 'Ferox']]));
+        $unknownHull = UpstreamDoctrine::fromResponse(self::response([['eft' => "[Nonexistent Hull, Rail Ferox]\nDamage Control II\n"]]));
+        $clean = UpstreamDoctrine::fromResponse(self::response([]));
+
+        foreach ([$unreadable, $unknownHull] as $doctrine) {
+            $kinds = self::byKind(SyncPlanner::plan($doctrine, self::SOURCE, $linked, self::resolver(), self::finder([])));
+            $this->assertArrayNotHasKey(SyncAction::MISSING, $kinds);
+        }
+        $kinds = self::byKind(SyncPlanner::plan($clean, self::SOURCE, $linked, self::resolver(), self::finder([])));
+        $this->assertCount(1, $kinds[SyncAction::MISSING], 'a cleanly read doctrine without the fit still marks it gone');
+    }
+
+    public function testAPlannedWriteIsDroppedWhenTheRowChangedMeanwhile(): void
+    {
+        $fit = new UpstreamFit(self::FEROX, 'Ferox', 'Rail Ferox');
+        $hash = UpstreamFit::hash(self::FEROX);
+        $row = ['source_id' => self::SOURCE, 'sync_state' => null, 'eft' => self::FEROX, 'source_eft_hash' => $hash, 'ship_type_id' => 16227];
+        $update = new SyncAction(SyncAction::UPDATE, 'Rail Ferox (Ferox)', $fit, 16227, 5);
+        $link = new SyncAction(SyncAction::LINK, 'Rail Ferox (Ferox)', $fit, 16227, 5);
+        $back = new SyncAction(SyncAction::RETURNED, 'Rail Ferox (Ferox)', $fit, 16227, 5);
+        $gone = new SyncAction(SyncAction::MISSING, 'Rail Ferox (Ferox)', fitId: 5);
+
+        $this->assertTrue(SyncPlanner::stillValid($update, $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($update, ['eft' => 'edited here'] + $row, self::SOURCE), 'EFT edited after the plan');
+        $this->assertFalse(SyncPlanner::stillValid($update, ['ship_type_id' => 1] + $row, self::SOURCE), 'hull changed after the plan');
+        $this->assertFalse(SyncPlanner::stillValid($update, ['sync_state' => 'missing'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($update, ['source_id' => 9] + $row, self::SOURCE));
+
+        $this->assertTrue(SyncPlanner::stillValid($back, ['sync_state' => 'missing'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($back, ['sync_state' => 'missing', 'eft' => 'edited while gone'] + $row, self::SOURCE));
+
+        $this->assertTrue(SyncPlanner::stillValid($link, ['source_id' => null, 'source_eft_hash' => null, 'eft' => 'hand made'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($link, $row, self::SOURCE), 'already taken by a doctrine');
+        $this->assertFalse(SyncPlanner::stillValid($link, ['source_id' => null, 'ship_type_id' => 1] + $row, self::SOURCE));
+
+        $this->assertTrue(SyncPlanner::stillValid($gone, $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($gone, ['sync_state' => 'missing'] + $row, self::SOURCE));
+        $this->assertFalse(SyncPlanner::stillValid($gone, ['source_id' => null] + $row, self::SOURCE));
+    }
+
     public function testANewFitIsAdded(): void
     {
         $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX]]));

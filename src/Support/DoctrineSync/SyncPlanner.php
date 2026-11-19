@@ -28,6 +28,9 @@ final class SyncPlanner
         $actions = [];
         $seen = [];
         $claimed = [];
+        // an upstream fit that cannot be matched to a local one might be any linked fit,
+        // so no linked fit is called gone until the doctrine reads cleanly again
+        $uncertain = $doctrine->unreadable !== [];
 
         foreach ($doctrine->unreadable as $label) {
             $actions[] = new SyncAction(SyncAction::FAILED, $label, detail: 'The fit is not readable EFT.');
@@ -37,12 +40,18 @@ final class SyncPlanner
             $resolved = $resolve($fit);
             $shipTypeId = $resolved['shipTypeId'];
             if ($shipTypeId === null) {
+                $uncertain = true;
                 $actions[] = new SyncAction(SyncAction::FAILED, $fit->label(), $fit, detail: sprintf('"%s" is not a ship name SeAT knows.', $fit->shipName));
                 continue;
             }
             if ($resolved['unresolved'] !== []) {
-                $actions[] = new SyncAction(SyncAction::FAILED, $fit->label(), $fit, $shipTypeId,
-                    detail: 'Unknown items: ' . implode(', ', $resolved['unresolved']) . '.');
+                // e.g. items newer than SeAT's item data: keep the linked copy as it is, still locked
+                $existing = $find($shipTypeId, $fit->fitName, $doctrine->name);
+                if ($existing !== null) {
+                    $claimed[$existing['id']] = true;
+                }
+                $actions[] = new SyncAction(SyncAction::FAILED, $fit->label(), $fit, $shipTypeId, $existing['id'] ?? null,
+                    'Unknown items: ' . implode(', ', $resolved['unresolved']) . '.');
                 continue;
             }
 
@@ -94,12 +103,34 @@ final class SyncPlanner
             }
         }
 
-        foreach ($linked as $row) {
+        foreach ($uncertain ? [] : $linked as $row) {
             if (! isset($claimed[$row['id']]) && ! $row['missing']) {
                 $actions[] = new SyncAction(SyncAction::MISSING, $row['label'], fitId: $row['id']);
             }
         }
 
         return $actions;
+    }
+
+    /**
+     * Whether a planned write still fits the fit's row as it is now, read under the row lock.
+     * The plan was made from a plain read, so a user may have edited the fit since.
+     *
+     * @param  array{source_id: ?int, sync_state: ?string, eft: string, source_eft_hash: ?string, ship_type_id: int}  $row
+     */
+    public static function stillValid(SyncAction $action, array $row, int $sourceId): bool
+    {
+        $sourceOf = $row['source_id'] === null ? null : (int) $row['source_id'];
+        $sameHull = (int) $row['ship_type_id'] === $action->shipTypeId;
+        $notEditedHere = $row['source_eft_hash'] === null || UpstreamFit::hash((string) $row['eft']) === $row['source_eft_hash'];
+
+        return match ($action->kind) {
+            SyncAction::LINK => $sourceOf === null && $sameHull,
+            SyncAction::UPDATE => $sourceOf === $sourceId && $row['sync_state'] === null && $sameHull && $notEditedHere,
+            SyncAction::RETURNED => $sourceOf === $sourceId && $row['sync_state'] === 'missing' && $sameHull && $notEditedHere,
+            SyncAction::MISSING => $sourceOf === $sourceId && $row['sync_state'] === null,
+            SyncAction::UNCHANGED => $sourceOf === $sourceId,
+            default => true,
+        };
     }
 }

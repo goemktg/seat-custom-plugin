@@ -6,6 +6,7 @@ namespace Goemktg\Seat\SeatCustomPlugin\Tests\Unit;
 
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\FitLock;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\ImportInput;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\ResponseLimit;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SourceStatus;
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\SyncAction;
 use PHPUnit\Framework\TestCase;
@@ -60,6 +61,39 @@ final class DoctrineImportUiTest extends TestCase
         self::assertSame([], ImportInput::slugs('rail-ferox'));
         $many = array_map(static fn (int $i) => 'd' . $i, range(1, 40));
         self::assertCount(ImportInput::MAX_DOCTRINES, ImportInput::slugs($many));
+    }
+
+    public function test_a_response_is_read_only_up_to_the_cap(): void
+    {
+        $chunks = static function (array $parts): array {
+            $i = 0;
+
+            return [static function () use (&$i, $parts): string { return $parts[$i++] ?? ''; }, static function () use (&$i, $parts): bool { return $i >= count($parts); }];
+        };
+
+        [$read, $eof] = $chunks(['{"a":', '1}']);
+        self::assertSame('{"a":1}', ResponseLimit::read($read, $eof, '', 10));
+
+        [$read, $eof] = $chunks(['12345', '67890', 'never read']);
+        $reads = 0;
+        $counting = static function () use ($read, &$reads): string { $reads++; return $read(); };
+        self::assertNull(ResponseLimit::read($counting, $eof, '', 8), 'over the cap');
+        self::assertSame(2, $reads, 'stops reading as soon as the cap is passed');
+
+        [$read, $eof] = $chunks(['x']);
+        self::assertNull(ResponseLimit::read($read, $eof, '11', 10), 'a declared length over the cap is refused before reading');
+        self::assertNull(ResponseLimit::read($read, $eof, 'abc', 10), 'a malformed length is refused');
+    }
+
+    public function test_a_body_with_too_many_json_elements_is_refused(): void
+    {
+        self::assertTrue(ResponseLimit::fewEnoughElements('{"fits":[{"eft":"a, b"}]}', 10));
+        self::assertFalse(ResponseLimit::fewEnoughElements('[' . str_repeat('0,', 20) . '0]', 10));
+    }
+
+    public function test_an_all_digit_slug_stays_a_string(): void
+    {
+        self::assertSame(['123', 'rail-ferox'], ImportInput::slugs(['123', 'rail-ferox', '123']));
     }
 
     public function test_link_ids_are_read_per_doctrine(): void

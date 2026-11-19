@@ -37,6 +37,9 @@ class DoctrineSync
 
     private const LOCK_SECONDS = 300;
 
+    /** Why a planned write was skipped: the fit changed after the plan was made. */
+    private const CHANGED_MEANWHILE = 'The fit was edited while the sync ran; it is checked again on the next sync.';
+
     public function __construct(private readonly DoctrineClient $client, private readonly SdeTypes $sde)
     {
     }
@@ -73,7 +76,7 @@ class DoctrineSync
         $sourceId = $this->sourceId($corporationId, $slug);
         $actions = $this->plan($corporationId, $doctrine, $sourceId, $linkIds);
         $ids = array_values(array_filter(array_map(static fn (SyncAction $a) => $a->writes() ? $a->fitId : null, $actions)));
-        $current = $ids === [] ? [] : DoctrineFit::whereIn('id', $ids)->pluck('eft', 'id')->all();
+        $current = $ids === [] ? [] : DoctrineFit::where('corporation_id', $corporationId)->whereIn('id', $ids)->pluck('eft', 'id')->all();
 
         return ['doctrine' => $doctrine, 'sourceId' => $sourceId, 'actions' => $actions, 'current' => $current];
     }
@@ -286,6 +289,17 @@ class DoctrineSync
                     'source_eft_hash' => UpstreamFit::hash($fit->eft),
                     'source_synced_at' => $now,
                 ];
+                if (in_array($action->kind, [SyncAction::UPDATE, SyncAction::RETURNED, SyncAction::LINK, SyncAction::MISSING, SyncAction::UNCHANGED], true)) {
+                    // the plan came from a plain read; a user may have edited the fit since
+                    $row = DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->lockForUpdate()
+                        ->first(['id', 'source_id', 'sync_state', 'eft', 'source_eft_hash', 'ship_type_id']);
+                    if ($row === null || ! SyncPlanner::stillValid($action, [
+                        'source_id' => $row->source_id, 'sync_state' => $row->sync_state, 'eft' => (string) $row->eft,
+                        'source_eft_hash' => $row->source_eft_hash, 'ship_type_id' => (int) $row->ship_type_id,
+                    ], $sourceId)) {
+                        throw new \UnexpectedValueException(self::CHANGED_MEANWHILE);
+                    }
+                }
                 switch ($action->kind) {
                     case SyncAction::ADD:
                         DoctrineFit::create($linkedValues() + [
@@ -297,9 +311,8 @@ class DoctrineSync
                     case SyncAction::UPDATE:
                     case SyncAction::RETURNED:
                     case SyncAction::LINK:
-                        $row = DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)->lockForUpdate()->firstOrFail();
                         // the last edit is this sync's: its user, or nobody for the hourly sync
-                        $row->fill($linkedValues() + ['updated_by' => $userId])->save();
+                        DoctrineFit::whereKey($row->id)->firstOrFail()->fill($linkedValues() + ['updated_by' => $userId])->save();
                         break;
                     case SyncAction::MISSING:
                         DoctrineFit::where('corporation_id', $corporationId)->whereKey($action->fitId)
@@ -319,6 +332,12 @@ class DoctrineSync
 
             return new SyncAction(SyncAction::HELD, $action->label, $fit, $action->shipTypeId, $action->fitId,
                 'Another fit already has this name in this doctrine or on this hull.');
+        } catch (\UnexpectedValueException $e) {
+            if ($e->getMessage() !== self::CHANGED_MEANWHILE) {
+                throw $e;
+            }
+
+            return new SyncAction(SyncAction::HELD, $action->label, $fit, $action->shipTypeId, $action->fitId, self::CHANGED_MEANWHILE);
         }
         if ($action->kind === SyncAction::ADD) {
             $id = DoctrineFit::where('corporation_id', $corporationId)->where('source_id', $sourceId)

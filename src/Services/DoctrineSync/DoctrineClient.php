@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync;
 
 use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\UpstreamDoctrine;
+use Goemktg\Seat\SeatCustomPlugin\Support\DoctrineSync\ResponseLimit;
+use GuzzleHttp\Exception\TransferException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -15,6 +17,9 @@ use Illuminate\Support\Facades\Http;
 class DoctrineClient
 {
     private const MAX_BYTES = 4_000_000;
+
+    /** ~100k elements decode to a few tens of MiB; a real doctrine (≤300 fits) has a few thousand. */
+    private const MAX_ELEMENTS = 100_000;
 
     private const MIN_TOKEN = 32;
 
@@ -95,11 +100,15 @@ class DoctrineClient
                 ->acceptJson()
                 ->connectTimeout(5)
                 ->timeout(15)
-                // a redirect would carry the token elsewhere
-                ->withOptions(['allow_redirects' => false])
+                // a redirect would carry the token elsewhere; streaming lets the size cap
+                // stop the transfer instead of buffering all of it first
+                ->withOptions(['allow_redirects' => false, 'stream' => true])
                 ->get(rtrim((string) $this->baseUrl, '/') . $path);
         } catch (ConnectionException) {
             throw new DoctrineSyncException('Could not reach the doctrine site.');
+        } catch (TransferException) {
+            // e.g. a TLS failure: a fixed message, never the address or the token
+            throw new DoctrineSyncException('The request to the doctrine site failed.');
         }
 
         $status = $response->status();
@@ -111,8 +120,17 @@ class DoctrineClient
                 default => new DoctrineSyncException(sprintf('The doctrine site answered with HTTP %d.', $status)),
             };
         }
-        $body = $response->body();
-        if (strlen($body) > self::MAX_BYTES) {
+        $psr = $response->toPsrResponse();
+        $stream = $psr->getBody();
+        try {
+            $body = ResponseLimit::read(static fn (): string => $stream->read(65536), static fn (): bool => $stream->eof(),
+                $psr->getHeaderLine('Content-Length'), self::MAX_BYTES);
+        } catch (\RuntimeException) {
+            throw new DoctrineSyncException('The doctrine site stopped answering.');
+        } finally {
+            $stream->close();
+        }
+        if ($body === null || ! ResponseLimit::fewEnoughElements($body, self::MAX_ELEMENTS)) {
             throw new DoctrineSyncException('The doctrine site sent an answer that is too large.');
         }
         try {
