@@ -72,17 +72,35 @@ final class DoctrineImportUiTest extends TestCase
         };
 
         [$read, $eof] = $chunks(['{"a":', '1}']);
-        self::assertSame('{"a":1}', ResponseLimit::read($read, $eof, '', 10));
+        self::assertSame('{"a":1}', ResponseLimit::read($read, $eof, '', 10, static fn (): bool => false));
 
         [$read, $eof] = $chunks(['12345', '67890', 'never read']);
         $reads = 0;
         $counting = static function () use ($read, &$reads): string { $reads++; return $read(); };
-        self::assertNull(ResponseLimit::read($counting, $eof, '', 8), 'over the cap');
+        $open = static fn (): bool => false;
+        self::assertNull(ResponseLimit::read($counting, $eof, '', 8, $open), 'over the cap');
         self::assertSame(2, $reads, 'stops reading as soon as the cap is passed');
 
         [$read, $eof] = $chunks(['x']);
-        self::assertNull(ResponseLimit::read($read, $eof, '11', 10), 'a declared length over the cap is refused before reading');
-        self::assertNull(ResponseLimit::read($read, $eof, 'abc', 10), 'a malformed length is refused');
+        self::assertNull(ResponseLimit::read($read, $eof, '11', 10, $open), 'a declared length over the cap is refused before reading');
+        self::assertNull(ResponseLimit::read($read, $eof, 'abc', 10, $open), 'a malformed length is refused');
+    }
+
+    public function test_a_stalled_answer_stops_at_the_deadline(): void
+    {
+        // a socket read that times out returns '' while eof stays false: without a deadline this loops forever
+        $reads = 0;
+        $stalled = static function () use (&$reads): string { $reads++; return ''; };
+        $never = static fn (): bool => false;
+        $clock = 0;
+        $expired = static function () use (&$clock): bool { return ++$clock > 3; };
+
+        try {
+            ResponseLimit::read($stalled, $never, '', 10, $expired);
+            self::fail('a stalled read must end');
+        } catch (\RuntimeException) {
+            self::assertSame(3, $reads);
+        }
     }
 
     public function test_a_body_with_too_many_json_elements_is_refused(): void

@@ -16,15 +16,22 @@ final class ResponseLimit
      * @param  callable(): string  $read  next chunk of the body
      * @param  callable(): bool  $eof
      * @param  string  $contentLength  the Content-Length header, '' when absent
+     * @param  callable(): bool  $expired  true once the whole answer has taken too long; a stalled
+     *                                     socket read returns '' without reaching eof, so only this ends it
      * @return string|null the body, or null when it is over $max
+     *
+     * @throws \RuntimeException when the deadline passes
      */
-    public static function read(callable $read, callable $eof, string $contentLength, int $max): ?string
+    public static function read(callable $read, callable $eof, string $contentLength, int $max, callable $expired): ?string
     {
         if ($contentLength !== '' && (! ctype_digit($contentLength) || (int) $contentLength > $max)) {
             return null;
         }
         $body = '';
         while (! $eof()) {
+            if ($expired()) {
+                throw new \RuntimeException('The answer took too long.');
+            }
             $body .= $read();
             if (strlen($body) > $max) {
                 return null;

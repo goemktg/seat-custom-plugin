@@ -23,6 +23,9 @@ class DoctrineClient
 
     private const MIN_TOKEN = 32;
 
+    /** Connect (5 s) plus a slow but honest transfer; a stalled or trickling answer ends here. */
+    private const DEADLINE_SECONDS = 20;
+
     public function __construct(private readonly ?string $baseUrl, private readonly ?string $token)
     {
     }
@@ -95,6 +98,8 @@ class DoctrineClient
         if (! $this->configured()) {
             throw new DoctrineSyncException('The doctrine site is not set up on this server.');
         }
+        // with a streamed body the timeout only covers each read, so the whole answer has its own deadline
+        $deadline = microtime(true) + self::DEADLINE_SECONDS;
         try {
             $response = Http::withToken((string) $this->token)
                 ->acceptJson()
@@ -111,23 +116,26 @@ class DoctrineClient
             throw new DoctrineSyncException('The request to the doctrine site failed.');
         }
 
-        $status = $response->status();
-        if ($status !== 200) {
-            throw match ($status) {
-                401 => new DoctrineSyncException('The doctrine site refused the read token.'),
-                404 => new DoctrineSyncException('This doctrine is no longer on the doctrine site.', gone: true),
-                429 => new DoctrineSyncException('The doctrine site is refusing this server after failed tokens. Try again in 15 minutes.'),
-                default => new DoctrineSyncException(sprintf('The doctrine site answered with HTTP %d.', $status)),
-            };
-        }
         $psr = $response->toPsrResponse();
         $stream = $psr->getBody();
         try {
+            $status = $psr->getStatusCode();
+            if ($status !== 200) {
+                throw match ($status) {
+                    401 => new DoctrineSyncException('The doctrine site refused the read token.'),
+                    404 => new DoctrineSyncException('This doctrine is no longer on the doctrine site.', gone: true),
+                    429 => new DoctrineSyncException('The doctrine site is refusing this server after failed tokens. Try again in 15 minutes.'),
+                    default => new DoctrineSyncException(sprintf('The doctrine site answered with HTTP %d.', $status)),
+                };
+            }
             $body = ResponseLimit::read(static fn (): string => $stream->read(65536), static fn (): bool => $stream->eof(),
-                $psr->getHeaderLine('Content-Length'), self::MAX_BYTES);
+                $psr->getHeaderLine('Content-Length'), self::MAX_BYTES, static fn (): bool => microtime(true) > $deadline);
+        } catch (DoctrineSyncException $e) {
+            throw $e;
         } catch (\RuntimeException) {
             throw new DoctrineSyncException('The doctrine site stopped answering.');
         } finally {
+            // every path, so no socket waits for garbage collection
             $stream->close();
         }
         if ($body === null || ! ResponseLimit::fewEnoughElements($body, self::MAX_ELEMENTS)) {
