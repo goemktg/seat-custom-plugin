@@ -99,6 +99,10 @@ class DoctrineSync
                 $doctrine = $this->fetch($slug);
             } catch (DoctrineSyncException $e) {
                 $this->recordFailure($corporationId, $slug, $userId, $e->getMessage());
+                if ($e->gone) {
+                    // the whole doctrine left the site: its fits are gone too, as when one fit leaves
+                    DB::transaction(fn () => $this->markGone($corporationId, $slug, $userId));
+                }
                 throw $e;
             }
 
@@ -324,6 +328,34 @@ class DoctrineSync
         }
 
         return $action;
+    }
+
+    /** Marks every still-synced fit of a doctrine that left the site as gone, so it can be edited again. */
+    private function markGone(int $corporationId, string $slug, ?int $userId): void
+    {
+        $source = DB::table(self::SOURCES)->where('corporation_id', $corporationId)->where('slug', $slug)->lockForUpdate()->first();
+        if ($source === null) {
+            return;
+        }
+        $fits = DoctrineFit::where('corporation_id', $corporationId)->where('source_id', $source->id)
+            ->whereNull('sync_state')->lockForUpdate()->get(['id', 'fit_name', 'ship_type_id']);
+        if ($fits->isEmpty()) {
+            return;
+        }
+        $now = now();
+        DoctrineFit::whereIn('id', $fits->pluck('id'))
+            ->update(['sync_state' => 'missing', 'source_missing_at' => $now, 'updated_by' => $userId]);
+
+        $hulls = DB::table('invTypes')->whereIn('typeID', $fits->pluck('ship_type_id'))->pluck('typeName', 'typeID');
+        $runId = (string) Str::ulid();
+        $userName = $userId === null ? null : DB::table('users')->where('id', $userId)->value('name');
+        DB::table(self::EVENTS)->insert($fits->map(static fn ($fit) => [
+            'run_id' => $runId, 'corporation_id' => $corporationId, 'source_id' => $source->id, 'fit_id' => $fit->id,
+            'kind' => SyncAction::MISSING, 'doctrine_label' => mb_substr((string) $source->name, 0, 100),
+            'fit_label' => mb_substr(sprintf('%s (%s)', $fit->fit_name, $hulls[$fit->ship_type_id] ?? $fit->ship_type_id), 0, 255),
+            'detail' => 'The doctrine is no longer on the doctrine site.',
+            'created_by' => $userId, 'created_by_name' => $userName, 'created_at' => $now,
+        ])->all());
     }
 
     private function recordFailure(int $corporationId, string $slug, ?int $userId, string $message): void

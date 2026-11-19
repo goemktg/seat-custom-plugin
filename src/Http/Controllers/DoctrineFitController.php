@@ -130,11 +130,8 @@ class DoctrineFitController extends Controller
     public function update(Request $request, CorporationInfo $corporation, int $fit, FitInput $input)
     {
         $model = $this->findFit($corporation, $fit);
-        if (FitLock::locked($model->source_id, $model->sync_state)) {
-            // the doctrine site owns these; whatever the form sent, keep them.
-            // The version check below still refuses a save if a sync changed them meanwhile.
-            $request->merge(FitLock::enforce($request->all(), $model->only(FitLock::FIELDS)));
-        }
+        // FitInput keeps a synced fit's doctrine, name and EFT whatever the form sent; the version
+        // check under the row lock below still refuses a save if a sync changed them meanwhile
         $valid = $input->validate($request, $corporation->corporation_id, $this->stagingIds($corporation), $model);
 
         self::guardDuplicate(fn () => DB::transaction(function () use ($model, $valid, $request) {
