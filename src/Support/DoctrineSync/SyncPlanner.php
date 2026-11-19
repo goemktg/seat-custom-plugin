@@ -103,9 +103,13 @@ final class SyncPlanner
                     $actions[] = self::sharedCopy($fit, $shipTypeId, $existing);
                 } else {
                     $actions[] = new SyncAction(SyncAction::HELD, $fit->label(), $fit, $shipTypeId, $existing['id'],
-                        $existing['sourceId'] === null
-                            ? SyncAction::HAND_FIT
-                            : 'A fit from another followed doctrine has this name on this hull.');
+                        match (true) {
+                            $existing['sourceId'] === null => SyncAction::HAND_FIT,
+                            // e.g. renamed there, leaving its old name to this doctrine's fit
+                            $existing['missing'] => sprintf('A fit gone from %s still has this name on this hull. Move its counts and stock if needed, then delete it.',
+                                $existing['ownerName'] ?? 'another doctrine'),
+                            default => 'A fit from another followed doctrine has this name on this hull.',
+                        });
                 }
                 continue;
             }

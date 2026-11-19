@@ -392,6 +392,19 @@ final class DoctrineSyncTest extends TestCase
         $this->assertSame(5, $actions[1]->fitId, 'the renamed fit keeps its row, counts and stock');
     }
 
+    public function testAGoneFitOfAnotherDoctrineHoldingTheNameSaysHowToFreeIt(): void
+    {
+        $doctrine = UpstreamDoctrine::fromResponse(self::response([['eft' => self::FEROX]]));
+        $find = self::finder(['16227:rail ferox' => ['id' => 9, 'sourceId' => 99, 'missing' => true, 'ownerName' => 'Legion',
+            'eft' => 'other', 'eftHash' => UpstreamFit::hash('other')]]);
+
+        $actions = SyncPlanner::plan($doctrine, self::SOURCE, [], self::resolver(), $find);
+
+        $this->assertSame([SyncAction::HELD], array_column($actions, 'kind'));
+        $this->assertStringContainsString('gone from Legion', (string) $actions[0]->detail);
+        $this->assertStringContainsString('then delete it', (string) $actions[0]->detail);
+    }
+
     /** @return array{0: UpstreamDoctrine, 1: callable} */
     private static function sharedCopy(array $row, ?int $shared = 42): array
     {
