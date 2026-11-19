@@ -13,6 +13,9 @@ namespace Goemktg\Seat\SeatCustomPlugin\Conformance;
  */
 final class HangarReport
 {
+    /** Tab of the fits several followed doctrines share. */
+    public const SHARED_TAB = 'Shared';
+
     /**
      * @param  list<array{ship: ShipSnapshot, match: MatchResult}>  $problems  in fit order, then ship name
      * @param  list<ShipSnapshot>  $unmatched  ships with no fit of their name and hull; hinted ones first
@@ -131,21 +134,32 @@ final class HangarReport
 
     /**
      * Problem groups split again per doctrine, in fit order, so a long list
-     * can be shown one doctrine at a time.
+     * can be shown one doctrine at a time. Fits that several followed doctrines
+     * share go to one tab of their own, after the doctrines, so no ship is
+     * listed twice.
      *
-     * @return list<array{doctrine: string, ships: int, fits: list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>}>}>
+     * @param  list<int>  $sharedFitIds
+     * @return list<array{doctrine: string, shared: bool, ships: int, fits: list<array{fit: CompiledFit, named: int, problems: list<array{ship: ShipSnapshot, match: MatchResult}>}>}>
      */
-    public function doctrineGroups(): array
+    public function doctrineGroups(array $sharedFitIds = []): array
     {
+        $shared = array_flip($sharedFitIds);
         $doctrines = [];
+        $sharedTab = null;
         foreach ($this->problemGroups() as $group) {
+            if (isset($shared[$group['fit']->id])) {
+                $sharedTab ??= ['doctrine' => self::SHARED_TAB, 'shared' => true, 'ships' => 0, 'fits' => []];
+                $sharedTab['ships'] += count($group['problems']);
+                $sharedTab['fits'][] = $group;
+                continue;
+            }
             $doctrine = $group['fit']->doctrine;
-            $doctrines[$doctrine] ??= ['doctrine' => $doctrine, 'ships' => 0, 'fits' => []];
+            $doctrines[$doctrine] ??= ['doctrine' => $doctrine, 'shared' => false, 'ships' => 0, 'fits' => []];
             $doctrines[$doctrine]['ships'] += count($group['problems']);
             $doctrines[$doctrine]['fits'][] = $group;
         }
 
-        return array_values($doctrines);
+        return [...array_values($doctrines), ...($sharedTab === null ? [] : [$sharedTab])];
     }
 
     /**

@@ -62,7 +62,7 @@
 
     @php
       $View = \Goemktg\Seat\SeatCustomPlugin\Conformance\HangarReport::class;
-      $doctrines = $report->doctrineGroups();
+      $doctrines = $report->doctrineGroups($result['sharedFitIds'] ?? []);
       // one doctrine at a time once the list is long; a short list reads better whole
       $doctrineTabs = count($doctrines) > 1 && count($report->problems) > 10;
       $totals = $View::totals($report->problems);
@@ -128,7 +128,7 @@
                   @foreach($doctrines as $i => $doctrine)
                     <li class="nav-item" role="presentation">
                       <a class="nav-link {{ $i === 0 ? 'active' : '' }}" id="cp-doc-{{ $i }}-tab" data-toggle="pill" href="#cp-doc-{{ $i }}" role="tab"
-                         aria-controls="cp-doc-{{ $i }}" aria-selected="{{ $i === 0 ? 'true' : 'false' }}">
+                         aria-controls="cp-doc-{{ $i }}" aria-selected="{{ $i === 0 ? 'true' : 'false' }}"@if($doctrine['shared']) title="Fits several followed doctrines share, listed once"@endif>
                         {{ $doctrine['doctrine'] }} <span class="badge badge-light">{{ $doctrine['ships'] }}</span>
                       </a>
                     </li>

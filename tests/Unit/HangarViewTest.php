@@ -46,6 +46,37 @@ final class HangarViewTest extends TestCase
         self::assertSame(['Basi A/M', 'Cerb SM'], array_map(static fn ($g) => $g['fit']->name, $groups[0]['fits']));
     }
 
+    public function test_fits_shared_by_several_followed_doctrines_get_one_tab_of_their_own(): void
+    {
+        $fits = [
+            self::fit(1, self::CERBERUS, 'Basi A/M', 'Cerberus'),
+            self::fit(2, self::LESHAK, 'Lesh A/M/A', 'Leshak RR'),
+            self::fit(3, self::CERBERUS, 'Cerb SM', 'Cerberus'),
+        ];
+        $ships = [self::ship(10, self::LESHAK, 'Lesh A/M/A'), self::ship(11, self::CERBERUS, 'Basi A/M'),
+            self::ship(12, self::LESHAK, 'Lesh A/M/A'), self::ship(13, self::CERBERUS, 'Cerb SM')];
+        $report = HangarReport::build($ships, $fits, [], new FitMatcher(), static fn (): bool => true);
+
+        $groups = $report->doctrineGroups([3, 2]);
+
+        self::assertSame(['Cerberus', HangarReport::SHARED_TAB], array_column($groups, 'doctrine'));
+        self::assertSame([false, true], array_column($groups, 'shared'));
+        self::assertSame([1, 3], array_column($groups, 'ships'), 'each ship once, in its one tab');
+        self::assertSame(['Lesh A/M/A', 'Cerb SM'], array_map(static fn ($g) => $g['fit']->name, $groups[1]['fits']));
+    }
+
+    public function test_a_doctrine_named_like_the_shared_tab_stays_its_own_tab(): void
+    {
+        $fits = [self::fit(1, self::CERBERUS, 'Basi A/M', HangarReport::SHARED_TAB), self::fit(2, self::LESHAK, 'Lesh A/M/A', 'Leshak RR')];
+        $ships = [self::ship(10, self::LESHAK, 'Lesh A/M/A'), self::ship(11, self::CERBERUS, 'Basi A/M')];
+        $report = HangarReport::build($ships, $fits, [], new FitMatcher(), static fn (): bool => true);
+
+        $groups = $report->doctrineGroups([2]);
+
+        self::assertCount(2, $groups);
+        self::assertSame([false, true], array_column($groups, 'shared'));
+    }
+
     public function test_totals_sum_what_to_add_and_remove_across_ships(): void
     {
         $fit = self::fit(1, self::LESHAK, 'Lesh A/M/A', 'Leshak RR');

@@ -34,7 +34,7 @@ class DoctrineFit extends Model
         'corporation_id', 'doctrine', 'fit_name', 'ship_type_id', 'eft',
         'bays', 'container', 'sort_order', 'created_by', 'updated_by',
         // set only by DoctrineSync; the fit form never sends them
-        'source_id', 'sync_state', 'source_missing_at', 'source_eft_hash', 'source_synced_at',
+        'source_id', 'sync_state', 'source_missing_at', 'source_eft_hash', 'source_synced_at', 'source_shared_id',
     ];
 
     protected $casts = [
@@ -42,6 +42,7 @@ class DoctrineFit extends Model
         'ship_type_id' => 'integer',
         'sort_order' => 'integer',
         'source_id' => 'integer',
+        'source_shared_id' => 'integer',
         'source_missing_at' => 'datetime',
         'source_synced_at' => 'datetime',
         'bays' => 'array',

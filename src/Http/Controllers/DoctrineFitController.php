@@ -66,6 +66,7 @@ class DoctrineFitController extends Controller
             'availableLocations' => $available,
             'hulls' => DB::table('invTypes')->whereIn('typeID', $fits->pluck('ship_type_id'))->pluck('typeName', 'typeID'),
             'doctrineSite' => $this->doctrineSite($corporation, $sync),
+            'shared' => DoctrineSync::sharedFits($corporation->corporation_id),
         ]);
     }
 
@@ -90,6 +91,7 @@ class DoctrineFitController extends Controller
                 'error' => $s->last_error,
                 'state' => SourceStatus::of($s->last_checked_at, $s->last_error, $s->last_report),
                 'problems' => SourceStatus::problems($s->last_report),
+                'shared' => SourceStatus::sharedCount($s->last_report),
             ])->all();
 
         return [

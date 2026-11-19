@@ -11,6 +11,7 @@ use Goemktg\Seat\SeatCustomPlugin\Conformance\HangarReport;
 use Goemktg\Seat\SeatCustomPlugin\Conformance\ShipTreeBuilder;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineFit;
 use Goemktg\Seat\SeatCustomPlugin\Models\DoctrineStaging;
+use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineSync;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,7 @@ class HangarCheckService
     }
 
     /**
-     * @return array{report: HangarReport, names: array<int, string>, syncedAt: ?string, hasOffice: bool}
+     * @return array{report: HangarReport, names: array<int, string>, syncedAt: ?string, hasOffice: bool, sharedFitIds: list<int>}
      */
     public function report(DoctrineStaging $staging): array
     {
@@ -84,7 +85,8 @@ class HangarCheckService
             $names = $fit->names + $names;
         }
 
-        return ['report' => $report, 'names' => $names, 'syncedAt' => $syncedAt, 'hasOffice' => $officeIds !== []];
+        return ['report' => $report, 'names' => $names, 'syncedAt' => $syncedAt, 'hasOffice' => $officeIds !== [],
+            'sharedFitIds' => array_keys(DoctrineSync::sharedFits($staging->corporation_id))];
     }
 
     /**

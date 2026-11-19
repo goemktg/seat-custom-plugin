@@ -11,13 +11,17 @@ final class SyncAction
     public const UPDATE = 'updated';
     public const LINK = 'linked';
     public const RETURNED = 'returned';
+    /** a shared fit another followed doctrine brought in, taken over because that doctrine let go of it */
+    public const TAKE_OVER = 'taken_over';
     public const UNCHANGED = 'unchanged';
+    /** a shared fit another followed doctrine already brought in: nothing to write, nothing wrong */
+    public const SHARED = 'shared';
     public const MISSING = 'missing';
     public const HELD = 'held';
     public const FAILED = 'failed';
 
     /** Kinds that write a fit. */
-    public const WRITES = [self::ADD, self::UPDATE, self::LINK, self::RETURNED];
+    public const WRITES = [self::ADD, self::UPDATE, self::LINK, self::RETURNED, self::TAKE_OVER];
 
     /** Why a fit is held when a hand-made fit has its name; the import window offers to link it. */
     public const HAND_FIT = 'A fit added by hand has this name on this hull.';

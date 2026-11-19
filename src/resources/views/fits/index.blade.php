@@ -55,7 +55,12 @@
               <tbody>
                 @foreach($fits as $fit)
                   <tr>
-                    <td>{{ $fit->doctrine }}</td>
+                    <td>
+                      {{ $fit->doctrine }}
+                      @isset($shared[$fit->id])
+                        <span class="badge badge-light border ml-1" title="Shared fit, also in {{ implode(', ', array_slice($shared[$fit->id], 1)) }}. Hangar Check lists it once, in the Shared tab.">Shared</span>
+                      @endisset
+                    </td>
                     <td>
                       {{ $fit->fit_name }}
                       @if($doctrineSite === null || $fit->source_id === null)
@@ -123,7 +128,7 @@
                       @elseif($s['state'] === 'waiting')
                         not checked yet
                       @else
-                        v{{ $s['version'] }} · {{ $s['checkedAt']?->diffForHumans() }}@if($s['problems']['held'] > 0) · {{ $s['problems']['held'] }} held @endif @if($s['problems']['failed'] > 0) · {{ $s['problems']['failed'] }} not readable @endif
+                        v{{ $s['version'] }} · {{ $s['checkedAt']?->diffForHumans() }}@if($s['problems']['held'] > 0) · {{ $s['problems']['held'] }} held @endif @if($s['problems']['failed'] > 0) · {{ $s['problems']['failed'] }} not readable @endif @if($s['shared'] > 0) · {{ $s['shared'] }} shared with other doctrines @endif
                       @endif
                     </span>
                   </li>
