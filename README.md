@@ -24,27 +24,68 @@ Add, edit and delete doctrine fits (EFT plus bay and container contents), stagin
 
 The sync removes every role that is not mapped or ignored, so add manually granted roles (for example administrators) to the ignore list. Run with `--dry-run` first. The plugin does not schedule the command.
 
-### Sign in with SeAT for the intel archive
+### Sign in with SeAT for your own applications
 
-The intel archive (intel.nisuwaz.com) signs its users in with their SeAT account through OAuth 2.0 (authorization code grant with PKCE, S256 only). There is one registered application, no consent screen and no refresh token:
+Your own applications (the intel archive, SRP and so on) can sign their users in with their SeAT account through OAuth 2.0: the authorization code grant with PKCE (S256 only). There is no consent screen and no refresh token.
 
-- `GET /custom-plugin/oauth/authorize`: a signed-in user with the **Intel Archive** permission is sent straight back with a one-time code (valid 60 seconds). Without the permission, without a main character, or when the main character has since been linked into another SeAT account, the user is sent back with `error=access_denied`. An unknown `client_id` or a `redirect_uri` that is not byte for byte the registered one gets an error page and no redirect.
-- `POST /custom-plugin/oauth/token`: exchanges the code, the PKCE verifier and the client secret (form body only) for an access token valid 5 minutes. Presenting a code a second time fails and revokes the token issued for it.
-- `GET /custom-plugin/oauth/userinfo` with `Authorization: Bearer`: returns `sub` (the SeAT user id as a string, stable across main character changes), `character_id` and `name` of the main character. The permission, and that the user still owns the main character, are checked again on every call.
+- `GET /custom-plugin/oauth/authorize`: a signed-in SeAT user is sent straight back with a one-time code, valid for 60 seconds. The user needs an active account and a main character that is still linked to that account. Otherwise, or when the application's `allowed_role_ids` refuse the user (see below), the user is sent back with `error=access_denied`. An unknown `client_id`, or a `redirect_uri` that is not byte for byte one of that application's registered addresses, gets an error page and no redirect. A `response_type` other than `code` is sent back with `error=unsupported_response_type`.
+- `POST /custom-plugin/oauth/token`: exchanges the code and the PKCE verifier for an access token valid for 5 minutes. Only the application the code was issued to can exchange it, and the `redirect_uri` must be the one the code was sent to. Presenting a code a second time fails and revokes the token issued for it.
+- `GET /custom-plugin/oauth/userinfo` with `Authorization: Bearer`: returns the user. The account, the main character and `allowed_role_ids` are checked again on every call (`403 access_denied` once they no longer pass).
 
-Token and userinfo answer `429` with `Retry-After` when a budget is used up. Requests without a valid client secret or bearer token count per address (30 and 60 a minute); requests with one count per client (token, 120 a minute) or per user (userinfo, 60 a minute), so callers who share an address behind a proxy cannot lock the archive out.
-
-Codes and tokens live only in the SeAT cache (Redis), keyed by their SHA-256. Nothing is written to the database. The feature is off (404) until all three values are set in the SeAT environment:
-
-```
-CUSTOM_PLUGIN_OAUTH_INTEL_CLIENT_ID=intel-archive
-CUSTOM_PLUGIN_OAUTH_INTEL_CLIENT_SECRET=<long random value, e.g. openssl rand -base64 48>
-CUSTOM_PLUGIN_OAUTH_INTEL_REDIRECT_URI=https://intel.nisuwaz.com/auth/callback
+```json
+{"sub": "12", "character_id": 90000001, "name": "Test Pilot", "admin": false,
+ "roles": [{"id": 3, "title": "Member"}, {"id": 7, "title": "SRP Officer"}]}
 ```
 
-The redirect address must be https (http only for localhost) and the secret at least 32 characters. The client authenticates with `client_id` and `client_secret` in the form body (`application/x-www-form-urlencoded`); HTTP Basic and JSON bodies are not accepted. A code is single-use only on a cache store with an atomic `add` (Redis, as SeAT ships; not the file store).
+`sub` is the SeAT user id as a string, and stays the same when the main character changes; identify accounts by it. `roles` are the user's SeAT roles in id order, including roles given through squads (SeAT copies those onto the user). `admin` is true for a SeAT administrator, who passes every SeAT permission check whatever their roles. Each application decides from these what the user may do there. Every registered application sees all of the user's roles and their titles, so register only applications you trust with that list.
 
-Known differences from RFC 6749: the token endpoint takes `client_secret` only in the form body (no HTTP Basic, so a `401 invalid_client` carries no `WWW-Authenticate`), and an authorize request whose `response_type` is not `code` is sent back with `error=invalid_request` rather than `unsupported_response_type`.
+The token endpoint accepts either form of client authentication from RFC 6749 section 2.3.1: HTTP Basic (`client_secret_basic`, with `client_id` and `client_secret` each form-encoded before they are joined), or `client_id` and `client_secret` in the form body (`client_secret_post`, `application/x-www-form-urlencoded`). Sending both is `400 invalid_request`. A failed HTTP Basic attempt gets `401 invalid_client` with `WWW-Authenticate: Basic realm="SeAT"`, and a failed form attempt gets `401 invalid_client`. JSON bodies are refused.
+
+Authorize allows 30 requests a minute for each application and user, so a page that keeps sending the browser to one application cannot use up the user's sign-in to the others. Token and userinfo answer `429` with `Retry-After` when a budget is used up. Requests without valid client credentials or a valid bearer token count per address: 30 a minute for token and 60 for userinfo. Requests with them count per application: 120 a minute for token, and 60 a minute for userinfo for each user. Callers that share an address behind a proxy therefore cannot lock an application out, and one application cannot use up another's budget.
+
+Codes and tokens live only in the SeAT cache (Redis), keyed by their SHA-256. Nothing is written to the database. A code is single-use only on a cache store with an atomic `add` (Redis, as SeAT ships, but not the file store). There are no scopes (`scope` is ignored), no refresh tokens and no OpenID Connect ID token.
+
+#### Registering applications
+
+The applications are listed in one JSON file, named by `CUSTOM_PLUGIN_OAUTH_CLIENTS_FILE` in the SeAT environment. The file holds only the SHA-256 of each secret, never the secret itself:
+
+```json
+{"clients": [
+  {"client_id": "intel-archive", "name": "Intel Archive",
+   "secret_sha256": "<64 lower-case hex characters>",
+   "redirect_uris": ["https://intel.nisuwaz.com/auth/callback"]},
+  {"client_id": "srp", "name": "SRP",
+   "secret_sha256": "<64 lower-case hex characters>",
+   "redirect_uris": ["https://srp.nisuwaz.com/auth/callback"],
+   "allowed_role_ids": [7]}
+]}
+```
+
+Make a secret and its hash like this. The secret uses only URL-safe characters, so it needs no encoding in HTTP Basic. Give the secret to the application and put only the hash in the file:
+
+```
+SECRET=$(openssl rand -base64 48 | tr '+/' '-_')
+printf %s "$SECRET" | sha256sum | cut -d' ' -f1
+```
+
+The plugin cannot check how strong a secret is, because the file holds only its hash. Use the command above, not a password someone chose.
+
+Rules for the file. If the file breaks any of them, the whole feature is off and every OAuth address answers 404. Each such request also writes a warning to the SeAT log, with the file path and the kind of problem (for example `client 1 is invalid`, counting from 0), but never a value from the file:
+
+- The file must exist and be readable, be at most 64 KiB of valid JSON, and have exactly one key, `clients`, holding a non-empty list.
+- Each application has exactly the keys `client_id`, `name`, `secret_sha256` and `redirect_uris`, plus the optional `allowed_role_ids`. An unknown key, for example a misspelt `allowed_roles`, is an error, so a restriction is never dropped silently.
+- `client_id` is 1 to 64 characters of `A-Z a-z 0-9 . _ -`, and is unique in the file. `name` is not empty. `secret_sha256` is 64 lower-case hex characters.
+- `redirect_uris` is a non-empty list of distinct addresses. Each one is https (http only for `localhost` and `127.0.0.1`), with a host, no fragment (`#`) and no user information (`user:pass@`). A request must use one of them exactly.
+- `allowed_role_ids`, when given, is a list of positive SeAT role ids (`null` is an error, not "no restriction").
+- A key repeated inside one object, anywhere in the file, is an error. (JSON readers keep only the last value, which could silently drop a restriction.)
+
+`allowed_role_ids` is optional. Usually leave it out, and let the application decide from `roles` in userinfo. Fill it in only for an application that must keep out everyone without one of those roles, for example to stop outsiders who merely have a SeAT account. With it, a user needs at least one of the listed roles, or must be a SeAT administrator: otherwise authorize sends them back with `access_denied` and userinfo answers `403`. An empty list or a missing key means no restriction.
+
+The file is read and checked again on every request to an OAuth address. A changed file therefore takes effect on the next request without a restart, and removing an application ends its outstanding tokens at once. When the file is a Docker Swarm config or secret, it cannot be changed in place. Create a new config or secret and point the service at it (change the stack file and redeploy, or `docker service update --config-rm <old> --config-add source=<new>,target=<path>`); Swarm then replaces the SeAT containers. For example, with the secret mounted as `/run/secrets/seat_oauth_clients`:
+
+```
+CUSTOM_PLUGIN_OAUTH_CLIENTS_FILE=/run/secrets/seat_oauth_clients
+```
 
 ## Installation
 
@@ -53,7 +94,6 @@ Add `goemktg/seat-custom-plugin` to `SEAT_PLUGINS` in the SeAT environment and r
 ## Permissions
 
 - **Hangar Check and Doctrine Fits** (`corporation.doctrine_hangar_view`, per corporation): view Hangar Check and manage the corporation's fits, stagings and required ship counts. Grant it through a SeAT role with a corporation filter.
-- **Intel Archive** (`global.intel_archive_view`, global): sign in to the intel archive with SeAT. Superusers always pass.
 - **Settings**: superusers only.
 
 ## Development

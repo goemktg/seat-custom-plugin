@@ -46,9 +46,9 @@ Route::group([
             ]);
         });
 
-        // Sign-in with SeAT for the intel archive; a signed-out user logs in first and comes back
+        // Sign-in with SeAT for the registered applications; a signed-out user logs in first and comes back
+        // limited per application and user in OAuthController, not by a per-user throttle middleware
         Route::get('/oauth/authorize', 'OAuthController@authorizeRequest')
-            ->middleware('throttle:30,1,custom-plugin-oauth-authorize')
             ->name('custom-plugin.oauth.authorize');
     });
 
@@ -107,10 +107,10 @@ Route::group([
     })->whereIn('page', ['hangar-check', 'doctrine-fits'])->where('rest', '.*');
 });
 
-// Server-to-server OAuth endpoints for the intel archive: no session, no CSRF,
+// Server-to-server OAuth endpoints for the registered applications: no session, no CSRF,
 // no cookies. The client proves itself with its secret or a bearer token.
 // Their limits are counted in OAuthController (failed requests per address,
-// the rest per client or user), not by a per-address throttle middleware.
+// the rest per application and user), not by a per-address throttle middleware.
 Route::group([
     'namespace'  => 'Goemktg\\Seat\\SeatCustomPlugin\Http\Controllers',
     'prefix'     => 'custom-plugin/oauth',

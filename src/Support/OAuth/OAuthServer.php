@@ -7,10 +7,11 @@ namespace Goemktg\Seat\SeatCustomPlugin\Support\OAuth;
 use Closure;
 
 /**
- * OAuth 2.0 authorization code grant with PKCE (S256 only) for the one
- * registered client. No consent screen, no refresh tokens, no tables:
- * codes live 60 seconds and access tokens 5 minutes in the GrantStore,
- * keyed by their SHA-256.
+ * OAuth 2.0 authorization code grant with PKCE (S256 only) for the
+ * applications in the ClientRegistry. No consent screen, no refresh tokens,
+ * no tables: codes live 60 seconds and access tokens 5 minutes in the
+ * GrantStore, keyed by their SHA-256. Each code and token is bound to the
+ * application it was issued to.
  */
 final class OAuthServer
 {
@@ -26,7 +27,7 @@ final class OAuthServer
     private readonly Closure $now;
 
     public function __construct(
-        private readonly ClientConfig $client,
+        private readonly ClientRegistry $clients,
         private readonly GrantStore $store,
         ?Closure $now = null,
     ) {
@@ -35,56 +36,96 @@ final class OAuthServer
 
     public function enabled(): bool
     {
-        return $this->client->enabled();
+        return $this->clients->enabled();
+    }
+
+    /** The registered application with this client_id, or null. */
+    public function client(mixed $clientId): ?Client
+    {
+        return $this->clients->find($clientId);
     }
 
     /**
      * @param  array<string, mixed>  $query  the authorize request query
-     * @param  bool  $allowed  whether the signed-in user may use the client
+     * @param  Closure(Client): bool  $mayUse  whether the signed-in user may sign in to this application
      */
-    public function authorize(array $query, int $userId, bool $allowed): AuthorizeResult
+    public function authorize(array $query, int $userId, Closure $mayUse): AuthorizeResult
     {
-        if (! $this->client->matches($query['client_id'] ?? null, $query['redirect_uri'] ?? null)) {
+        $client = $this->clients->find($query['client_id'] ?? null);
+        $redirectUri = $query['redirect_uri'] ?? null;
+        if ($client === null || ! $client->hasRedirect($redirectUri)) {
             return AuthorizeResult::reject('The application or its return address is not registered with SeAT.');
         }
+        /** @var string $redirectUri */
 
         $state = $query['state'] ?? null;
         if (! is_string($state) || $state === '' || strlen($state) > self::STATE_MAX) {
-            return $this->back(['error' => 'invalid_request']);
+            return self::back($redirectUri, ['error' => 'invalid_request']);
         }
+        $responseType = $query['response_type'] ?? null;
         $challenge = $query['code_challenge'] ?? null;
-        if (($query['response_type'] ?? null) !== 'code'
+        if (! is_string($responseType)
             || ($query['code_challenge_method'] ?? null) !== 'S256'
             || ! is_string($challenge) || preg_match(self::SECRET_PATTERN, $challenge) !== 1) {
-            return $this->back(['error' => 'invalid_request', 'state' => $state]);
+            return self::back($redirectUri, ['error' => 'invalid_request', 'state' => $state]);
         }
-        if (! $allowed) {
-            return $this->back(['error' => 'access_denied', 'state' => $state]);
+        if ($responseType !== 'code') {
+            return self::back($redirectUri, ['error' => 'unsupported_response_type', 'state' => $state]);
+        }
+        if (! $mayUse($client)) {
+            return self::back($redirectUri, ['error' => 'access_denied', 'state' => $state]);
         }
 
         $code = self::randomSecret();
         $this->store->putCode(self::hash($code), [
             'user_id' => $userId,
-            'client_id' => $this->client->clientId(),
-            'redirect_uri' => $this->client->redirectUri(),
+            'client_id' => $client->id(),
+            'redirect_uri' => $redirectUri,
             'code_challenge' => $challenge,
             'expires_at' => ($this->now)() + self::CODE_SECONDS,
         ], self::CODE_SECONDS);
 
-        return $this->back(['code' => $code, 'state' => $state]);
+        return self::back($redirectUri, ['code' => $code, 'state' => $state]);
+    }
+
+    /**
+     * Client authentication on the token endpoint (RFC 6749 section 2.3.1): HTTP Basic
+     * (client_secret_basic) or client_id and client_secret in the form body (client_secret_post),
+     * never both.
+     *
+     * @param  array<string, mixed>  $form  the token request body
+     * @param  string|null  $authorization  the Authorization header
+     */
+    public function authenticateClient(array $form, ?string $authorization): ClientAuthentication
+    {
+        if ($authorization === null || preg_match('/^Basic(?:\z|\s+)(.*)\z/is', $authorization, $basic) !== 1) {
+            $client = $this->clients->authenticate($form['client_id'] ?? null, $form['client_secret'] ?? null);
+
+            return $client === null ? ClientAuthentication::failed(false) : ClientAuthentication::succeeded($client);
+        }
+        if (array_key_exists('client_secret', $form)) {
+            return ClientAuthentication::ambiguous();
+        }
+        $decoded = base64_decode($basic[1], true);
+        if (! is_string($decoded) || ! str_contains($decoded, ':')) {
+            return ClientAuthentication::failed(true);
+        }
+        // both halves are form-encoded before they are joined (RFC 6749 section 2.3.1)
+        [$id, $secret] = array_map('urldecode', explode(':', $decoded, 2));
+        if (array_key_exists('client_id', $form) && $form['client_id'] !== $id) {
+            return ClientAuthentication::ambiguous();
+        }
+        $client = $this->clients->authenticate($id, $secret);
+
+        return $client === null ? ClientAuthentication::failed(true) : ClientAuthentication::succeeded($client);
     }
 
     /** @param  array<string, mixed>  $form  the token request body */
-    public function authenticatesClient(array $form): bool
+    public function token(array $form, ClientAuthentication $authentication): TokenResult
     {
-        return $this->client->authenticates($form['client_id'] ?? null, $form['client_secret'] ?? null);
-    }
-
-    /** @param  array<string, mixed>  $form  the token request body */
-    public function token(array $form): TokenResult
-    {
-        if (! $this->authenticatesClient($form)) {
-            return TokenResult::error('invalid_client', 401);
+        $client = $authentication->client();
+        if ($client === null) {
+            return $authentication->failure() ?? TokenResult::error('invalid_client', 401);
         }
         $grantType = $form['grant_type'] ?? null;
         if (! is_string($grantType) || $grantType === '') {
@@ -114,7 +155,7 @@ final class OAuthServer
         }
         $now = ($this->now)();
         if (! is_int($grant['expires_at'] ?? null) || $grant['expires_at'] <= $now
-            || ! is_string($grant['client_id'] ?? null) || ! hash_equals($grant['client_id'], (string) $form['client_id'])
+            || ! is_string($grant['client_id'] ?? null) || ! hash_equals($grant['client_id'], $client->id())
             || ! is_string($grant['redirect_uri'] ?? null) || ! hash_equals($grant['redirect_uri'], $redirectUri)
             || ! is_string($grant['code_challenge'] ?? null) || ! hash_equals($grant['code_challenge'], self::s256($verifier))
             || ! is_int($grant['user_id'] ?? null)) {
@@ -140,8 +181,8 @@ final class OAuthServer
         return TokenResult::issued($token, self::TOKEN_SECONDS);
     }
 
-    /** The SeAT user id behind a live "Authorization: Bearer" header, or null. */
-    public function userIdFor(?string $authorization): ?int
+    /** The live access token in an "Authorization: Bearer" header, or null. */
+    public function bearer(?string $authorization): ?BearerGrant
     {
         if (! $this->enabled() || $authorization === null
             || preg_match('/^Bearer ([A-Za-z0-9_-]{43})\z/i', $authorization, $m) !== 1) {
@@ -150,19 +191,18 @@ final class OAuthServer
         $grant = $this->store->token(self::hash($m[1]));
         if ($grant === null
             || ! is_int($grant['expires_at'] ?? null) || $grant['expires_at'] <= ($this->now)()
-            || ! is_string($grant['client_id'] ?? null) || ! hash_equals($this->client->clientId(), $grant['client_id'])
             || ! is_int($grant['user_id'] ?? null)) {
             return null;
         }
+        // the application must still be registered: removing it from the file ends its tokens
+        $client = $this->clients->find($grant['client_id'] ?? null);
 
-        return $grant['user_id'];
+        return $client === null ? null : new BearerGrant($grant['user_id'], $client);
     }
 
     /** @param  array<string, string>  $params */
-    private function back(array $params): AuthorizeResult
+    private static function back(string $uri, array $params): AuthorizeResult
     {
-        $uri = $this->client->redirectUri();
-
         return AuthorizeResult::redirect($uri . (str_contains($uri, '?') ? '&' : '?') . http_build_query($params, '', '&', PHP_QUERY_RFC3986));
     }
 

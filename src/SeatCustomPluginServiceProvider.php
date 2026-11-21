@@ -26,10 +26,11 @@ use Goemktg\Seat\SeatCustomPlugin\Commands\SyncSquadsWithRoles;
 use Goemktg\Seat\SeatCustomPlugin\Services\CorporationAccess;
 use Goemktg\Seat\SeatCustomPlugin\Services\DoctrineSync\DoctrineClient;
 use Goemktg\Seat\SeatCustomPlugin\Services\OAuth\CacheGrantStore;
-use Goemktg\Seat\SeatCustomPlugin\Support\OAuth\ClientConfig;
+use Goemktg\Seat\SeatCustomPlugin\Support\OAuth\ClientRegistry;
 use Goemktg\Seat\SeatCustomPlugin\Support\OAuth\OAuthServer;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Seat\Services\AbstractSeatPlugin;
 
 /**
@@ -74,19 +75,26 @@ class SeatCustomPluginServiceProvider extends AbstractSeatPlugin
         $this->mergeConfigFrom(__DIR__ . '/Config/custom-plugin.doctrine-sync.php', 'custom-plugin.doctrine-sync');
         $this->app->bind(DoctrineClient::class, static fn () => DoctrineClient::fromConfig());
         $this->mergeConfigFrom(__DIR__ . '/Config/custom-plugin.oauth.php', 'custom-plugin.oauth');
-        $this->app->bind(OAuthServer::class, static fn () => new OAuthServer(
-            ClientConfig::fromArray((array) config('custom-plugin.oauth.intel', [])),
-            new CacheGrantStore(Cache::store()),
-        ));
+        // bind, not singleton: the clients file is read and checked again for every OAuth request
+        $this->app->bind(OAuthServer::class, static function (): OAuthServer {
+            $file = config('custom-plugin.oauth.clients_file');
+            $clients = ClientRegistry::fromFile(is_string($file) ? $file : null);
+            if (is_string($file) && $file !== '' && ! $clients->enabled()) {
+                // the reason names no value from the file, so no secret hash reaches the log
+                Log::warning('custom-plugin: OAuth is off, the clients file was rejected', [
+                    'path' => $file,
+                    'reason' => $clients->problem(),
+                ]);
+            }
+
+            return new OAuthServer($clients, new CacheGrantStore(Cache::store()));
+        });
 
         // Overload sidebar with your package menu entries
         $this->mergeConfigFrom(__DIR__ . '/Config/package.sidebar.php', 'package.sidebar');
 
         // Doctrine hangar check: corporation-scoped so roles can be limited per corporation
         $this->registerPermissions(__DIR__ . '/Config/custom-plugin.corporation-permissions.php', 'corporation');
-
-        // Intel archive sign-in: one global permission, not tied to a corporation
-        $this->registerPermissions(__DIR__ . '/Config/custom-plugin.global-permissions.php', 'global');
     }
 
     /**
