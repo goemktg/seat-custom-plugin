@@ -45,6 +45,11 @@ Route::group([
                 'uses' => 'SettingsController@updateDoctrineSync'
             ]);
         });
+
+        // Sign-in with SeAT for the intel archive; a signed-out user logs in first and comes back
+        Route::get('/oauth/authorize', 'OAuthController@authorizeRequest')
+            ->middleware('throttle:30,1,custom-plugin-oauth-authorize')
+            ->name('custom-plugin.oauth.authorize');
     });
 
     // Inventory pages live under their own first URL segment so the sidebar
@@ -100,4 +105,18 @@ Route::group([
 
         return redirect('/inventory/' . $path . ($query === null ? '' : '?' . $query));
     })->whereIn('page', ['hangar-check', 'doctrine-fits'])->where('rest', '.*');
+});
+
+// Server-to-server OAuth endpoints for the intel archive: no session, no CSRF,
+// no cookies. The client proves itself with its secret or a bearer token.
+// Their limits are counted in OAuthController (failed requests per address,
+// the rest per client or user), not by a per-address throttle middleware.
+Route::group([
+    'namespace'  => 'Goemktg\\Seat\\SeatCustomPlugin\Http\Controllers',
+    'prefix'     => 'custom-plugin/oauth',
+], function (): void {
+    Route::post('/token', 'OAuthController@token')
+        ->name('custom-plugin.oauth.token');
+    Route::get('/userinfo', 'OAuthController@userinfo')
+        ->name('custom-plugin.oauth.userinfo');
 });

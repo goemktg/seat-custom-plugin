@@ -23,4 +23,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 return [
     'doctrine_hangar_view_label'        => 'Hangar Check and Doctrine Fits',
     'doctrine_hangar_view_description'  => 'Check the corporation hangar against doctrine fits, and add, edit and delete the fits, stagings and required ship counts.',
+    'intel_archive_view_label'          => 'Intel Archive',
+    'intel_archive_view_description'    => 'Sign in to the intel archive (intel.nisuwaz.com) with this SeAT account and read the recruitment interviews kept there.',
 ];
