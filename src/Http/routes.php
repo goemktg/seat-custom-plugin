@@ -45,6 +45,11 @@ Route::group([
                 'uses' => 'SettingsController@updateDoctrineSync'
             ]);
         });
+
+        // Sign-in with SeAT for the registered applications; a signed-out user logs in first and comes back
+        // limited per application and user in OAuthController, not by a per-user throttle middleware
+        Route::get('/oauth/authorize', 'OAuthController@authorizeRequest')
+            ->name('custom-plugin.oauth.authorize');
     });
 
     // Inventory pages live under their own first URL segment so the sidebar
@@ -100,4 +105,18 @@ Route::group([
 
         return redirect('/inventory/' . $path . ($query === null ? '' : '?' . $query));
     })->whereIn('page', ['hangar-check', 'doctrine-fits'])->where('rest', '.*');
+});
+
+// Server-to-server OAuth endpoints for the registered applications: no session, no CSRF,
+// no cookies. The client proves itself with its secret or a bearer token.
+// Their limits are counted in OAuthController (failed requests per address,
+// the rest per application and user), not by a per-address throttle middleware.
+Route::group([
+    'namespace'  => 'Goemktg\\Seat\\SeatCustomPlugin\Http\Controllers',
+    'prefix'     => 'custom-plugin/oauth',
+], function (): void {
+    Route::post('/token', 'OAuthController@token')
+        ->name('custom-plugin.oauth.token');
+    Route::get('/userinfo', 'OAuthController@userinfo')
+        ->name('custom-plugin.oauth.userinfo');
 });
