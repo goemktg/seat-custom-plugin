@@ -87,6 +87,18 @@ The file is read and checked again on every request to an OAuth address. A chang
 CUSTOM_PLUGIN_OAUTH_CLIENTS_FILE=/run/secrets/seat_oauth_clients
 ```
 
+### Discord link lookup API
+
+`GET /api/v2/custom-plugin/discord-links?discord_id=<Discord user ID>` answers which SeAT account a Discord user is linked to through seat-discord-connector, for bots that hold a SeAT API token. It sits behind SeAT's own API middleware: send the token in `X-Token` (its allowed source address applies) and accept JSON (or send no `Accept` header).
+
+- `200 {"data":[{"user_id":123}]}`, or `{"data":[]}` when the Discord user is not linked. Only the account id is returned.
+- `422 {"message":"discord_id must be 1 to 20 digits"}` for a missing or malformed `discord_id`.
+- `503 {"message":"seat-connector is not installed"}` when the seat-connector link table does not exist.
+- `401` / `406` come from SeAT's API middleware (bad token or address, unsupported `Accept`).
+- Any SeAT API token can call it: SeAT tokens have no scopes (and already reach SeAT's own user API), so keep the bot's token as safe as a superuser password.
+
+It reads `seat_connector_users` directly because seat-connector 3.1.2's own `/api/v2/seat-connector/users` returns every field as null. Nothing is written.
+
 ## Installation
 
 Add `goemktg/seat-custom-plugin` to `SEAT_PLUGINS` in the SeAT environment and restart the SeAT containers. Migrations run on start.
@@ -110,4 +122,10 @@ The OAuth endpoints also have a smoke check that boots the real SeAT app (array 
 
 ```sh
 docker run --rm --network none -v "$PWD":/plugin:ro --entrypoint php ghcr.io/eveseat/seat:5.0.110 /plugin/tests/Integration/oauth-seat-smoke.php
+```
+
+The Discord link lookup API has the same kind of smoke check:
+
+```sh
+docker run --rm --network none -v "$PWD":/plugin:ro --entrypoint php ghcr.io/eveseat/seat:5.0.110 /plugin/tests/Integration/discord-links-seat-smoke.php
 ```

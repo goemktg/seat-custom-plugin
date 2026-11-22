@@ -120,3 +120,14 @@ Route::group([
     Route::get('/userinfo', 'OAuthController@userinfo')
         ->name('custom-plugin.oauth.userinfo');
 });
+
+// Read-only lookups for bots that hold a SeAT API token (X-Token), next to SeAT's own /api/v2.
+// Same middleware as SeAT's API: JSON only, token and its allowed source address checked and logged.
+Route::group([
+    'namespace'  => 'Goemktg\\Seat\\SeatCustomPlugin\Http\Controllers',
+    'prefix'     => 'api/v2/custom-plugin',
+    'middleware' => ['api.request', 'api.auth'],
+], function (): void {
+    Route::get('/discord-links', 'DiscordLinkController@index')
+        ->name('custom-plugin.api.discord-links');
+});
